@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 
+import { ServiceWorkerRegistrar } from '@/components/pwa/service-worker-registrar';
 import { Toaster } from '@/components/ui/sonner';
 import { APP_NAME } from '@/constants/app';
 import { cn } from '@/utils/cn';
@@ -15,11 +16,21 @@ export const metadata: Metadata = {
     template: `%s · ${APP_NAME}`,
   },
   description: 'Split expenses with friends and groups.',
+  applicationName: APP_NAME,
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: APP_NAME,
+  },
+  icons: {
+    apple: '/icons/apple-touch-icon.png',
+  },
 };
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  themeColor: '#0f172a',
 };
 
 /**
@@ -47,6 +58,7 @@ export default function RootLayout({
       >
         {children}
         <Toaster />
+        <ServiceWorkerRegistrar />
       </body>
     </html>
   );
