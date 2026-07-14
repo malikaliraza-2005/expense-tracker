@@ -343,7 +343,14 @@ export interface Database {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      // Phase 3 — resolve an email to a profile id (migration 0007). Returns
+      // the uuid for an exact, case-insensitive match, or null when unknown.
+      find_profile_by_email: {
+        Args: { lookup_email: string };
+        Returns: string;
+      };
+    };
     Enums: {
       group_type: 'trip' | 'home' | 'friends' | 'couple' | 'office' | 'other';
       split_type: 'equal' | 'exact' | 'percentage';
