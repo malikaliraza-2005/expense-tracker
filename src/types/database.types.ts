@@ -350,6 +350,42 @@ export interface Database {
         Args: { lookup_email: string };
         Returns: string;
       };
+      // Phase 4 — atomic expense + splits write (migration 0005). Persists the
+      // expense together with its pre-validated splits in one transaction and
+      // returns the affected expense row.
+      create_expense_with_splits: {
+        Args: {
+          p_group_id: string | null;
+          p_title: string;
+          p_description: string | null;
+          p_amount_cents: number;
+          p_currency: string;
+          p_category_id: number;
+          p_expense_date: string;
+          p_paid_by: string;
+          p_notes: string | null;
+          p_split_type: Database['public']['Enums']['split_type'];
+          p_splits: Array<{ user_id: string; share_cents: number }>;
+        };
+        Returns: Database['public']['Tables']['expenses']['Row'];
+      };
+      update_expense_with_splits: {
+        Args: {
+          p_expense_id: string;
+          p_group_id: string | null;
+          p_title: string;
+          p_description: string | null;
+          p_amount_cents: number;
+          p_currency: string;
+          p_category_id: number;
+          p_expense_date: string;
+          p_paid_by: string;
+          p_notes: string | null;
+          p_split_type: Database['public']['Enums']['split_type'];
+          p_splits: Array<{ user_id: string; share_cents: number }>;
+        };
+        Returns: Database['public']['Tables']['expenses']['Row'];
+      };
     };
     Enums: {
       group_type: 'trip' | 'home' | 'friends' | 'couple' | 'office' | 'other';
