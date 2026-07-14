@@ -25,12 +25,12 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center rounded-lg border border-dashed p-10 text-center',
+        'flex animate-fade-in-up flex-col items-center justify-center rounded-xl border border-dashed bg-card/40 p-10 text-center',
         className,
       )}
     >
       {icon ? (
-        <div className="mb-3 text-muted-foreground [&_svg]:h-8 [&_svg]:w-8">
+        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-muted to-muted/60 text-muted-foreground shadow-soft ring-1 ring-border [&_svg]:h-7 [&_svg]:w-7">
           {icon}
         </div>
       ) : null}

@@ -8,10 +8,10 @@ import { usePathname } from 'next/navigation';
 import { LogOut, Menu, X } from 'lucide-react';
 
 import { signOut } from '@/actions/auth';
+import { Logo } from '@/components/common/logo';
 import { NavLinks } from '@/components/layout/nav-links';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { APP_NAME } from '@/constants/app';
 import { ROUTES } from '@/constants/routes';
 import { cn } from '@/utils/cn';
 
@@ -87,10 +87,10 @@ export function MobileNav({
         <div className="flex h-16 items-center justify-between border-b px-4">
           <Link
             href={ROUTES.dashboard}
-            className="font-semibold tracking-tight"
+            className="rounded-md outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"
             onClick={() => setOpen(false)}
           >
-            {APP_NAME}
+            <Logo size="sm" />
           </Link>
           <Button
             type="button"

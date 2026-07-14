@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
+import { Logo } from '@/components/common/logo';
 import { PageHeader } from '@/components/common/page-header';
 import { AvatarUploader } from '@/components/profile/avatar-uploader';
 import { ProfileForm } from '@/components/profile/profile-form';
@@ -42,6 +43,7 @@ export default async function ProfilePage() {
       <PageHeader
         title="Profile"
         description="Manage how you appear to friends and groups."
+        action={<Logo size="md" />}
       />
 
       <Card>

@@ -22,7 +22,7 @@ export function SummaryCards({ summary }: { summary: BalanceSummary }) {
 
   return (
     <div className="grid gap-4 sm:grid-cols-3">
-      <Card>
+      <Card className="hover:-translate-y-0.5 hover:shadow-elevated">
         <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground">
             Net balance
@@ -44,7 +44,7 @@ export function SummaryCards({ summary }: { summary: BalanceSummary }) {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="hover:-translate-y-0.5 hover:shadow-elevated">
         <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground">
             You are owed
@@ -62,7 +62,7 @@ export function SummaryCards({ summary }: { summary: BalanceSummary }) {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="hover:-translate-y-0.5 hover:shadow-elevated">
         <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground">
             You owe

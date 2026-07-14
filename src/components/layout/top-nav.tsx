@@ -1,8 +1,8 @@
 import Link from 'next/link';
 
+import { Logo } from '@/components/common/logo';
 import { MobileNav } from '@/components/layout/mobile-nav';
 import { ThemeToggle } from '@/components/layout/theme-toggle';
-import { APP_NAME } from '@/constants/app';
 import { ROUTES } from '@/constants/routes';
 
 /**
@@ -18,11 +18,14 @@ export function TopNav({
   avatarUrl: string | null;
 }) {
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-background px-4 md:hidden">
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-background/80 px-4 backdrop-blur-xl md:hidden">
       <div className="flex items-center gap-2">
         <MobileNav name={name} avatarUrl={avatarUrl} />
-        <Link href={ROUTES.dashboard} className="font-semibold tracking-tight">
-          {APP_NAME}
+        <Link
+          href={ROUTES.dashboard}
+          className="rounded-md outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Logo size="sm" />
         </Link>
       </div>
       <ThemeToggle />

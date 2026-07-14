@@ -72,5 +72,30 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* Smoother font rendering for the polished type. */
+    text-rendering: optimizeLegibility;
+  }
+}
+
+@layer utilities {
+  /* Soft, blurred decorative blob used by the ambient page backgrounds. */
+  .bg-blob {
+    @apply pointer-events-none absolute rounded-full opacity-60 blur-3xl;
+  }
+}
+
+/*
+ * Accessibility: honour the user's reduced-motion preference. Disables the
+ * decorative float/fade animations and long transitions so nothing moves for
+ * people who opt out, while keeping the interface fully functional.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
   }
 }

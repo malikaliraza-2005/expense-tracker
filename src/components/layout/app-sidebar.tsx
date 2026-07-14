@@ -3,11 +3,11 @@ import Link from 'next/link';
 import { LogOut } from 'lucide-react';
 
 import { signOut } from '@/actions/auth';
+import { Logo } from '@/components/common/logo';
 import { NavLinks } from '@/components/layout/nav-links';
 import { ThemeToggle } from '@/components/layout/theme-toggle';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { APP_NAME } from '@/constants/app';
 import { ROUTES } from '@/constants/routes';
 
 /**
@@ -23,10 +23,13 @@ export function AppSidebar({
   avatarUrl: string | null;
 }) {
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r bg-background md:flex">
+    <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r bg-background/80 backdrop-blur-xl md:flex">
       <div className="flex h-16 items-center border-b px-6">
-        <Link href={ROUTES.dashboard} className="font-semibold tracking-tight">
-          {APP_NAME}
+        <Link
+          href={ROUTES.dashboard}
+          className="rounded-md outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <Logo size="sm" />
         </Link>
       </div>
 

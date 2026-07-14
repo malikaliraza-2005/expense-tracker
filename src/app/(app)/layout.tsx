@@ -1,3 +1,4 @@
+import { DecorativeBackground } from '@/components/common/decorative-background';
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import { TopNav } from '@/components/layout/top-nav';
 import { requireUser } from '@/lib/auth';
@@ -22,11 +23,14 @@ export default async function AppLayout({
   const avatarUrl = profile?.avatar_url ?? null;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen">
+      <DecorativeBackground />
       <AppSidebar name={name} avatarUrl={avatarUrl} />
       <div className="md:pl-64">
         <TopNav name={name} avatarUrl={avatarUrl} />
-        <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6">{children}</main>
+        <main className="mx-auto max-w-5xl animate-fade-in px-4 py-6 sm:px-6">
+          {children}
+        </main>
       </div>
     </div>
   );
