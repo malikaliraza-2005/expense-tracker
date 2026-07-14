@@ -1,13 +1,13 @@
 /**
- * Supabase-generated database types.
+ * Supabase database types.
  *
- * PLACEHOLDER (Phase 0): the schema is introduced in Phase 2. This file will be
- * regenerated with:
+ * Hand-authored to match the applied migrations. In a later phase this file can
+ * be regenerated wholesale from the live schema with:
  *
  *   supabase gen types typescript --project-id <ref> > src/types/database.types.ts
  *
- * Until then it exposes an empty-but-valid `Database` shape so the typed Supabase
- * clients compile.
+ * Phase 1 (Authentication) adds the `profiles` table (migration 0001). The
+ * remaining tables land in Phase 2.
  */
 
 export type Json =
@@ -20,7 +20,39 @@ export type Json =
 
 export interface Database {
   public: {
-    Tables: Record<string, never>;
+    Tables: {
+      profiles: {
+        Row: {
+          id: string;
+          full_name: string;
+          avatar_url: string | null;
+          preferred_currency: string;
+          created_at: string;
+        };
+        Insert: {
+          id: string;
+          full_name?: string;
+          avatar_url?: string | null;
+          preferred_currency?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          full_name?: string;
+          avatar_url?: string | null;
+          preferred_currency?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'profiles_id_fkey';
+            columns: ['id'];
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+    };
     Views: Record<string, never>;
     Functions: Record<string, never>;
     Enums: Record<string, never>;

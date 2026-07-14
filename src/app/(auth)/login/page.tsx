@@ -1,29 +1,41 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 
+import { LoginForm } from '@/components/auth/login-form';
 import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { ROUTES } from '@/constants/routes';
 
 export const metadata: Metadata = { title: 'Log in' };
 
-/**
- * Login route placeholder (Phase 0).
- * The login form and auth action are implemented in Phase 1.
- */
+/** Login route (Phase 1). Renders the login form inside the auth shell. */
 export default function LoginPage() {
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-xl">Log in</CardTitle>
-        <CardDescription>Authentication arrives in Phase 1.</CardDescription>
+        <CardDescription>Welcome back. Enter your details to continue.</CardDescription>
       </CardHeader>
-      <CardContent className="text-sm text-muted-foreground">
-        This is a placeholder shell.
+      <CardContent>
+        <LoginForm />
       </CardContent>
+      <CardFooter className="justify-center text-sm text-muted-foreground">
+        <span>
+          Don&apos;t have an account?{' '}
+          <Link
+            href={ROUTES.register}
+            className="text-primary underline-offset-4 hover:underline"
+          >
+            Create one
+          </Link>
+        </span>
+      </CardFooter>
     </Card>
   );
 }

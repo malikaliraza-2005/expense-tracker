@@ -1,29 +1,41 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 
+import { RegisterForm } from '@/components/auth/register-form';
 import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { ROUTES } from '@/constants/routes';
 
 export const metadata: Metadata = { title: 'Create account' };
 
-/**
- * Register route placeholder (Phase 0).
- * The registration form and auth action are implemented in Phase 1.
- */
+/** Register route (Phase 1). Renders the registration form in the auth shell. */
 export default function RegisterPage() {
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-xl">Create account</CardTitle>
-        <CardDescription>Authentication arrives in Phase 1.</CardDescription>
+        <CardDescription>Start splitting expenses in seconds.</CardDescription>
       </CardHeader>
-      <CardContent className="text-sm text-muted-foreground">
-        This is a placeholder shell.
+      <CardContent>
+        <RegisterForm />
       </CardContent>
+      <CardFooter className="justify-center text-sm text-muted-foreground">
+        <span>
+          Already have an account?{' '}
+          <Link
+            href={ROUTES.login}
+            className="text-primary underline-offset-4 hover:underline"
+          >
+            Log in
+          </Link>
+        </span>
+      </CardFooter>
     </Card>
   );
 }
