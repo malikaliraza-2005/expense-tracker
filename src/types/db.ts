@@ -17,5 +17,22 @@ export type TablesInsert<T extends keyof PublicSchema['Tables']> =
 export type TablesUpdate<T extends keyof PublicSchema['Tables']> =
   PublicSchema['Tables'][T]['Update'];
 
+/** Database enum helper. */
+export type Enums<T extends keyof PublicSchema['Enums']> =
+  PublicSchema['Enums'][T];
+
 /** Phase 1 — Authentication. */
 export type Profile = Tables<'profiles'>;
+
+/** Phase 2 — full schema. Row-shaped entity aliases. */
+export type Category = Tables<'categories'>;
+export type Friendship = Tables<'friendships'>;
+export type Group = Tables<'groups'>;
+export type GroupMember = Tables<'group_members'>;
+export type Expense = Tables<'expenses'>;
+export type ExpenseSplit = Tables<'expense_splits'>;
+export type Settlement = Tables<'settlements'>;
+
+/** Phase 2 — enum aliases. */
+export type GroupType = Enums<'group_type'>;
+export type SplitType = Enums<'split_type'>;
