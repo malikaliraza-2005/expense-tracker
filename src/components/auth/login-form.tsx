@@ -2,12 +2,15 @@
 
 import * as React from 'react';
 
+import Link from 'next/link';
+
 import { toast } from 'sonner';
 
 import { signIn } from '@/actions/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ROUTES } from '@/constants/routes';
 import { validateSignIn } from '@/schemas/auth.schema';
 
 type FieldErrors = { email?: string; password?: string };
@@ -63,7 +66,15 @@ export function LoginForm() {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="password">Password</Label>
+        <div className="flex items-center justify-between">
+          <Label htmlFor="password">Password</Label>
+          <Link
+            href={ROUTES.forgotPassword}
+            className="text-xs font-medium text-primary underline-offset-4 transition-colors hover:underline"
+          >
+            Forgot password?
+          </Link>
+        </div>
         <Input
           id="password"
           name="password"

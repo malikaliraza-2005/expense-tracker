@@ -50,9 +50,14 @@ export async function updateSession(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
   const isAuthRoute = pathname === ROUTES.login || pathname === ROUTES.register;
-  // Public = the auth pages, the marketing home, and the auth callback handler.
+  // Public = the auth pages, the forgot-password page, the marketing home, and
+  // the auth callback handler. (Reset-password stays protected: it needs the
+  // recovery session the callback establishes.)
   const isPublicRoute =
-    isAuthRoute || pathname === '/' || pathname.startsWith('/auth');
+    isAuthRoute ||
+    pathname === ROUTES.forgotPassword ||
+    pathname === '/' ||
+    pathname.startsWith('/auth');
 
   if (!user && !isPublicRoute) {
     return redirectPreservingCookies(request, ROUTES.login, supabaseResponse);

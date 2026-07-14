@@ -41,6 +41,10 @@ export function RegisterForm() {
       const result = await signUp(parsed.data);
       // On immediate sign-in the action redirects; we only reach here otherwise.
       if (result && !result.ok) {
+        // Surface an existing-account error inline on the email field too.
+        if (result.error.toLowerCase().includes('already exists')) {
+          setErrors({ email: result.error });
+        }
         toast.error(result.error);
         return;
       }

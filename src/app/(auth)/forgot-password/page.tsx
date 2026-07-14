@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { RegisterForm } from '@/components/auth/register-form';
+import { ForgotPasswordForm } from '@/components/auth/forgot-password-form';
 import {
   Card,
   CardContent,
@@ -12,32 +12,34 @@ import {
 } from '@/components/ui/card';
 import { ROUTES } from '@/constants/routes';
 
-export const metadata: Metadata = { title: 'Create account' };
+export const metadata: Metadata = { title: 'Reset password' };
 
-/** Register route (Phase 1). Renders the registration form in the auth shell. */
-export default function RegisterPage() {
+/** Forgot-password route: request a reset link by email. */
+export default function ForgotPasswordPage() {
   return (
     <div className="space-y-6">
       <div className="space-y-1 text-center">
         <h1 className="text-2xl font-semibold tracking-tight">
-          Create your account
+          Forgot your password?
         </h1>
         <p className="text-sm text-muted-foreground">
-          Split expenses with friends in seconds.
+          Enter your email and we&apos;ll send you a reset link.
         </p>
       </div>
 
       <Card className="shadow-elevated">
         <CardHeader>
-          <CardTitle className="text-xl">Create account</CardTitle>
-          <CardDescription>Just a few details to get started.</CardDescription>
+          <CardTitle className="text-xl">Reset password</CardTitle>
+          <CardDescription>
+            We&apos;ll email you a secure link to set a new password.
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <RegisterForm />
+          <ForgotPasswordForm />
         </CardContent>
         <CardFooter className="justify-center text-sm text-muted-foreground">
           <span>
-            Already have an account?{' '}
+            Remembered it?{' '}
             <Link
               href={ROUTES.login}
               className="font-medium text-primary underline-offset-4 transition-colors hover:underline"

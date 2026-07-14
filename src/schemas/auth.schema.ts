@@ -94,6 +94,42 @@ export function validateSignUp(input: AuthFormInput): ValidationResult<SignUpInp
   return { success: true, data: { email, password, fullName } };
 }
 
+export interface ResetRequestInput {
+  email: string;
+}
+
+/** Validate a password-reset request (email only). */
+export function validateResetRequest(
+  input: AuthFormInput,
+): ValidationResult<ResetRequestInput> {
+  const email = asString(input.email).trim();
+
+  const errors: Partial<Record<keyof ResetRequestInput, string>> = {};
+  const emailError = validateEmail(email);
+  if (emailError) errors.email = emailError;
+
+  if (Object.keys(errors).length > 0) return { success: false, errors };
+  return { success: true, data: { email } };
+}
+
+export interface NewPasswordInput {
+  password: string;
+}
+
+/** Validate a new password chosen during the reset flow. */
+export function validateNewPassword(
+  input: AuthFormInput,
+): ValidationResult<NewPasswordInput> {
+  const password = asString(input.password);
+
+  const errors: Partial<Record<keyof NewPasswordInput, string>> = {};
+  const passwordError = validatePassword(password);
+  if (passwordError) errors.password = passwordError;
+
+  if (Object.keys(errors).length > 0) return { success: false, errors };
+  return { success: true, data: { password } };
+}
+
 /** First error message from a validation result's error map, for toasts. */
 export function firstError<T>(errors: Partial<Record<keyof T, string>>): string | undefined {
   const values = Object.values(errors) as Array<string | undefined>;

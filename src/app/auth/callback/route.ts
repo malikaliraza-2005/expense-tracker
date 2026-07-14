@@ -13,7 +13,15 @@ import { createClient } from '@/lib/supabase/server';
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
-  const next = searchParams.get('next') ?? ROUTES.dashboard;
+
+  // Only allow a same-origin relative path as the post-auth destination — never
+  // an absolute or protocol-relative ("//host") URL — so the `next` query param
+  // cannot be abused as an open redirect to an attacker-controlled site.
+  const nextParam = searchParams.get('next');
+  const next =
+    nextParam && nextParam.startsWith('/') && !nextParam.startsWith('//')
+      ? nextParam
+      : ROUTES.dashboard;
 
   if (code) {
     const supabase = createClient();

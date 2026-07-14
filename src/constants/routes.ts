@@ -4,6 +4,8 @@ export const ROUTES = {
   // Public (auth) routes
   login: '/login',
   register: '/register',
+  forgotPassword: '/forgot-password',
+  resetPassword: '/reset-password',
   authCallback: '/auth/callback',
 
   // Protected (app) routes
