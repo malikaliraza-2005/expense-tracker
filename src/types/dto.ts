@@ -9,7 +9,16 @@
  * Sign convention for every `netCents` here matches lib/balances.ts, always from
  * the current user's perspective: > 0 the counterparty owes me, < 0 I owe them.
  */
-import type { Group, GroupType, Profile } from '@/types/db';
+import type { BalanceSummary } from '@/lib/balances';
+import type {
+  Category,
+  Expense,
+  Group,
+  GroupType,
+  Profile,
+  Settlement,
+  SplitType,
+} from '@/types/db';
 
 /** A friend plus the current user's net balance with them. */
 export interface FriendWithBalance {
@@ -67,6 +76,64 @@ export interface LedgerEntry {
 /** The who-owes-whom ledger for a group (current-user-scoped in the MVP). */
 export interface GroupLedger {
   entries: LedgerEntry[];
+}
+
+/**
+ * Phase 4 — Expenses & Splitting.
+ */
+
+/** A row in the expense list: the expense joined to its category and payer. */
+export interface ExpenseListItem {
+  expense: Expense;
+  category: Category;
+  payer: Profile;
+  /** Number of participants (expense_splits rows) on the expense. */
+  participantCount: number;
+}
+
+/** One participant's share within an expense detail view. */
+export interface ExpenseParticipant {
+  profile: Profile;
+  shareCents: number;
+}
+
+/** Full detail for one expense: fields, category, payer, group, and splits. */
+export interface ExpenseDetail {
+  expense: Expense;
+  category: Category;
+  payer: Profile;
+  /** The owning group, or null for a personal / 1:1 expense. */
+  group: Group | null;
+  participants: ExpenseParticipant[];
+  /** The split type recorded on the splits (uniform across an expense). */
+  splitType: SplitType;
+  /** True when the current user created the expense (may edit/delete it). */
+  isOwner: boolean;
+}
+
+/**
+ * Phase 5 — Dashboard & Settlements.
+ */
+
+/** A settlement joined to its payer and receiver profiles, for list/detail. */
+export interface SettlementListItem {
+  settlement: Settlement;
+  payer: Profile;
+  receiver: Profile;
+}
+
+/**
+ * Everything the dashboard renders: the overall balance summary (reused from the
+ * balance engine), plus recent activity and per-group figures. All figures are
+ * settlement-aware — the engine nets `expense_splits` against `settlements`.
+ */
+export interface DashboardData {
+  /** Overall you-owe / you-are-owed / net across every relationship. */
+  summary: BalanceSummary;
+  recentExpenses: ExpenseListItem[];
+  recentSettlements: SettlementListItem[];
+  /** Per-group summary cards (group + member count + the user's net). */
+  groups: GroupWithBalance[];
 }
 
 export type { GroupType };
