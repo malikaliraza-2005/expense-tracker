@@ -114,7 +114,11 @@ export default async function GroupDetailPage({
           <ul className="flex flex-wrap gap-3">
             {members.map((member) => (
               <li key={member.userId} className="flex items-center gap-2">
-                <Avatar name={member.profile.full_name} className="h-8 w-8" />
+                <Avatar
+                  name={member.profile.full_name}
+                  src={member.profile.avatar_url}
+                  className="h-8 w-8"
+                />
                 <span className="text-sm">
                   {member.profile.full_name || 'Unnamed'}
                 </span>

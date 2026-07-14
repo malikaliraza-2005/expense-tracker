@@ -14,7 +14,11 @@ export function FriendBalance({ detail }: { detail: FriendBalanceDetail }) {
   return (
     <Card>
       <CardHeader className="flex-row items-center gap-3 space-y-0">
-        <Avatar name={detail.friend.full_name} className="h-11 w-11 text-sm" />
+        <Avatar
+          name={detail.friend.full_name}
+          src={detail.friend.avatar_url}
+          className="h-11 w-11 text-sm"
+        />
         <div className="space-y-1">
           <CardTitle className="text-lg">{name}</CardTitle>
           <BalanceLabel netCents={detail.netCents} subject="them" />

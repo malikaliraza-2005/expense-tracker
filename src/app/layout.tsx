@@ -22,6 +22,13 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
+/**
+ * Applies the persisted theme before first paint to avoid a flash of the wrong
+ * theme. Runs synchronously in <head> ahead of any rendering. Kept as a small
+ * inline string so it ships without a separate request.
+ */
+const themeScript = `(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark');}}catch(e){}})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -29,6 +36,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body
         className={cn(
           'min-h-screen bg-background font-sans antialiased',

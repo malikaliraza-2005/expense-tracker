@@ -119,7 +119,10 @@ export function MemberManager({
             <li key={member.userId}>
               <Card className="flex items-center justify-between gap-3 p-3">
                 <div className="flex min-w-0 items-center gap-3">
-                  <Avatar name={member.profile.full_name} />
+                  <Avatar
+                    name={member.profile.full_name}
+                    src={member.profile.avatar_url}
+                  />
                   <p className="truncate font-medium">{name}</p>
                   {isGroupOwner ? (
                     <Badge variant="secondary">Owner</Badge>

@@ -79,7 +79,10 @@ export function FriendList({ friends }: { friends: FriendWithBalance[] }) {
                     href={`/friends/${friend.profile.id}`}
                     className="flex min-w-0 flex-1 items-center gap-3 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    <Avatar name={friend.profile.full_name} />
+                    <Avatar
+                      name={friend.profile.full_name}
+                      src={friend.profile.avatar_url}
+                    />
                     <div className="min-w-0">
                       <p className="truncate font-medium">{name}</p>
                       <BalanceLabel netCents={friend.netCents} subject="them" />

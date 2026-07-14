@@ -129,6 +129,7 @@ export function ExpenseDetail({
                   <span className="flex min-w-0 items-center gap-2">
                     <Avatar
                       name={participant.profile.full_name}
+                      src={participant.profile.avatar_url}
                       className="h-8 w-8"
                     />
                     <span className="truncate text-sm">{name}</span>

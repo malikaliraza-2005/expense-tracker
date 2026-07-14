@@ -13,6 +13,7 @@ export const ROUTES = {
   friends: '/friends',
   groups: '/groups',
   newGroup: '/groups/new',
+  search: '/search',
   profile: '/profile',
   settings: '/settings',
 } as const;

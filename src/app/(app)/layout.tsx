@@ -1,18 +1,15 @@
-import Link from 'next/link';
-
-import { signOut } from '@/actions/auth';
-import { Button } from '@/components/ui/button';
-import { APP_NAME } from '@/constants/app';
-import { ROUTES } from '@/constants/routes';
+import { AppSidebar } from '@/components/layout/app-sidebar';
+import { TopNav } from '@/components/layout/top-nav';
 import { requireUser } from '@/lib/auth';
+import { getCurrentProfile } from '@/lib/queries/profile';
 
 /**
- * Protected app shell layout (Phase 1).
+ * Protected app shell layout (Phase 1, responsive chrome added in Phase 6).
  *
  * Server-side auth guard: `requireUser` redirects unauthenticated visitors to
- * the login page (defense in depth alongside middleware). Provides a minimal
- * top bar with a logout control; richer navigation chrome arrives in later
- * phases.
+ * the login page (defense in depth alongside middleware). Renders the fixed
+ * desktop sidebar and the mobile top bar / drawer around the page content, both
+ * seeded with the current user's name and avatar.
  */
 export default async function AppLayout({
   children,
@@ -20,22 +17,17 @@ export default async function AppLayout({
   children: React.ReactNode;
 }>) {
   await requireUser();
+  const profile = await getCurrentProfile();
+  const name = profile?.full_name || null;
+  const avatarUrl = profile?.avatar_url ?? null;
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="container mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-          <Link href={ROUTES.dashboard} className="font-semibold tracking-tight">
-            {APP_NAME}
-          </Link>
-          <form action={signOut}>
-            <Button type="submit" variant="ghost" size="sm">
-              Log out
-            </Button>
-          </form>
-        </div>
-      </header>
-      <main className="container mx-auto max-w-5xl px-4 py-6">{children}</main>
+      <AppSidebar name={name} avatarUrl={avatarUrl} />
+      <div className="md:pl-64">
+        <TopNav name={name} avatarUrl={avatarUrl} />
+        <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6">{children}</main>
+      </div>
     </div>
   );
 }
