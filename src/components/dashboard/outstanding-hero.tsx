@@ -106,8 +106,10 @@ export function OutstandingHero({
               nothing ? 'No expenses' : allSettled ? 'All settled' : 'To settle'
             }
             centerValue={
+              // Match the label: the count of what's still to settle (or, when
+              // everything is settled, how many were settled) — not the total.
               <span className={allSettled ? 'text-income' : 'text-foreground'}>
-                {settledCount + outstandingCount}
+                {allSettled ? settledCount : outstandingCount}
               </span>
             }
           />
