@@ -307,7 +307,7 @@ export function ExpenseForm({
               type="button"
               onClick={() => setAdding(true)}
               disabled={isPending}
-              className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary outline-none transition-colors hover:bg-primary/20 focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex min-h-[36px] items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary outline-none transition-colors hover:bg-primary/20 focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Plus className="h-3.5 w-3.5" />
               Add person

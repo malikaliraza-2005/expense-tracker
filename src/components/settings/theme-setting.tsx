@@ -72,7 +72,7 @@ export function ThemeSetting() {
               aria-checked={active}
               onClick={() => apply(value)}
               className={cn(
-                'inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200',
+                'inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200',
                 active
                   ? 'bg-primary/15 text-primary shadow-glow-sm ring-1 ring-inset ring-primary/25'
                   : 'text-muted-foreground hover:text-foreground',
