@@ -1,42 +1,80 @@
-import { getOverallSummary } from '@/lib/queries/balances';
+import { getUser } from '@/lib/auth';
 import { listExpenses } from '@/lib/queries/expenses';
-import { getGroups } from '@/lib/queries/groups';
-import { listSettlements } from '@/lib/queries/settlements';
-import { createClient } from '@/lib/supabase/server';
 import type { DashboardData } from '@/types/dto';
 
 /**
- * Dashboard read (Phase 5). Assembles the home overview by REUSING the existing
- * data-access layer rather than re-querying: the overall balance summary comes
- * from the balance engine (queries/balances.ts), and recent activity / group
- * figures from the Phase 3–4 expense, settlement, and group reads. Every figure
- * is therefore settlement-aware and reconciles with the ledger by construction.
- *
- * All the underlying reads are RLS-scoped, so the dashboard only ever reflects
- * data the caller may see. Returns `null` when unauthenticated.
+ * Dashboard read. Assembles the home overview from the owner's expenses:
+ * outstanding vs settled totals, a recent list of outstanding expenses, and a
+ * category spend breakdown for the insights donut. All reads are RLS-scoped, so
+ * the dashboard only ever reflects the owner's own data. Returns `null` when
+ * unauthenticated.
  */
 
-/** How many recent expenses / settlements the dashboard surfaces. */
+/** How many recent outstanding expenses the dashboard surfaces. */
 const RECENT_LIMIT = 5;
 
 export async function getDashboard(): Promise<DashboardData | null> {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) return null;
 
-  const [summary, expenses, recentSettlements, groups] = await Promise.all([
-    getOverallSummary(),
-    listExpenses(),
-    listSettlements({ limit: RECENT_LIMIT }),
-    getGroups(),
-  ]);
+  const expenses = await listExpenses();
+
+  // Partition by the manual settled flag (migration 0011).
+  const outstanding = expenses.filter((e) => !e.expense.settled_at);
+  const settled = expenses.filter((e) => e.expense.settled_at);
+  const outstandingCents = outstanding.reduce(
+    (sum, e) => sum + e.expense.amount_cents,
+    0,
+  );
+  const settledCents = settled.reduce(
+    (sum, e) => sum + e.expense.amount_cents,
+    0,
+  );
+
+  // Derive spend analytics from the already-fetched expense list (no extra
+  // query). Category totals feed the dashboard donut; the monthly figure is a
+  // simple current-calendar-month sum.
+  const now = new Date();
+  const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  const byCategory = new Map<
+    string,
+    { name: string; icon: string; totalCents: number }
+  >();
+  let totalSpendCents = 0;
+  let monthlySpendCents = 0;
+
+  for (const { expense, category } of expenses) {
+    totalSpendCents += expense.amount_cents;
+    if (expense.expense_date?.startsWith(monthPrefix)) {
+      monthlySpendCents += expense.amount_cents;
+    }
+    const key = category.name;
+    const existing = byCategory.get(key);
+    if (existing) {
+      existing.totalCents += expense.amount_cents;
+    } else {
+      byCategory.set(key, {
+        name: category.name,
+        icon: category.icon,
+        totalCents: expense.amount_cents,
+      });
+    }
+  }
+
+  const categoryBreakdown = Array.from(byCategory.values()).sort(
+    (a, b) => b.totalCents - a.totalCents,
+  );
 
   return {
-    summary,
-    recentExpenses: expenses.slice(0, RECENT_LIMIT),
-    recentSettlements,
-    groups,
+    outstandingCents,
+    settledCents,
+    outstandingCount: outstanding.length,
+    settledCount: settled.length,
+    recentOutstanding: outstanding.slice(0, RECENT_LIMIT),
+    categoryBreakdown,
+    totalSpendCents,
+    monthlySpendCents,
+    expenseCount: expenses.length,
   };
 }

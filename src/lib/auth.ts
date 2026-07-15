@@ -17,16 +17,26 @@ import { createClient } from '@/lib/supabase/server';
  */
 
 /**
- * The current authenticated user, or `null`. Uses `getUser()` (not
- * `getSession()`) so the JWT is verified against Supabase, and is wrapped in
- * React `cache` so repeated calls within one request hit the network once.
+ * The current authenticated user, or `null`, wrapped in React `cache` so
+ * repeated calls within one request share a single result.
+ *
+ * This reads the session from the request cookies (no network round-trip)
+ * rather than calling `getUser()`, which would hit the Supabase Auth server on
+ * every navigation. That is safe here because of two independent guarantees on
+ * every protected request:
+ *   1. Middleware (`updateSession`) has already called `getUser()` for real,
+ *      verifying and refreshing the JWT before the page renders — a request
+ *      that reaches a Server Component has a server-verified session.
+ *   2. RLS is the ultimate boundary: every data query re-validates the JWT
+ *      signature at the database, so a forged cookie yields no data regardless.
+ * The result: one auth round-trip per navigation (in middleware) instead of two.
  */
 export const getUser = cache(async (): Promise<User | null> => {
   const supabase = createClient();
   const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user;
+    data: { session },
+  } = await supabase.auth.getSession();
+  return session?.user ?? null;
 });
 
 /**

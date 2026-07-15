@@ -12,10 +12,6 @@ export const ROUTES = {
   dashboard: '/dashboard',
   expenses: '/expenses',
   newExpense: '/expenses/new',
-  friends: '/friends',
-  groups: '/groups',
-  newGroup: '/groups/new',
-  search: '/search',
   profile: '/profile',
   settings: '/settings',
 } as const;

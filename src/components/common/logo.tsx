@@ -46,7 +46,7 @@ export function Logo({
       <span
         aria-hidden="true"
         className={cn(
-          'inline-flex shrink-0 items-center justify-center bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-soft ring-1 ring-inset ring-white/10',
+          'inline-flex shrink-0 items-center justify-center bg-gradient-neon text-white shadow-glow-sm ring-1 ring-inset ring-white/20',
           MARK_SIZES[size],
         )}
       >
@@ -70,7 +70,8 @@ export function Logo({
             WORDMARK_SIZES[size],
           )}
         >
-          {APP_NAME}
+          {APP_NAME.split(' ')[0]}
+          <span className="text-gradient">{APP_NAME.split(' ').slice(1).join(' ') ? ` ${APP_NAME.split(' ').slice(1).join(' ')}` : ''}</span>
         </span>
       ) : null}
     </span>

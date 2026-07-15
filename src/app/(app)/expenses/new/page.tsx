@@ -16,15 +16,11 @@ import { toISODate } from '@/utils/date';
 export const metadata: Metadata = { title: 'New expense' };
 
 /**
- * New-expense page (Phase 4). Loads the scope choices (personal + groups with
- * members) and categories, then renders the shared expense form. An optional
- * `?group=<id>` preselects that group (e.g. when adding from a group page).
+ * New-expense page. Loads the current members (for "Paid by" / "Split between")
+ * and categories, then renders the shared expense form. New people can be added
+ * inline from the form itself.
  */
-export default async function NewExpensePage({
-  searchParams,
-}: {
-  searchParams: { group?: string };
-}) {
+export default async function NewExpensePage() {
   const [formData, categories] = await Promise.all([
     getExpenseFormData(),
     listCategories(),
@@ -51,8 +47,7 @@ export default async function NewExpensePage({
             mode="create"
             categories={categories}
             scopes={formData.scopes}
-            currentUserId={formData.currentUserId}
-            defaultScopeId={searchParams.group ?? null}
+            selfMemberId={formData.selfMemberId}
             defaultDate={toISODate(new Date())}
           />
         </CardContent>

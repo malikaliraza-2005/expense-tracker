@@ -1,5 +1,6 @@
 import { cache } from 'react';
 
+import { getUser } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import type { Profile } from '@/types/db';
 
@@ -14,13 +15,10 @@ import type { Profile } from '@/types/db';
  * not yet created. Wrapped in React `cache` to dedupe within a request.
  */
 export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
-  const supabase = createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) return null;
 
+  const supabase = createClient();
   const { data, error } = await supabase
     .from('profiles')
     .select('*')

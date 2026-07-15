@@ -1,6 +1,8 @@
+'use client';
+
 import * as React from 'react';
 
-import { formatCents } from '@/utils/money';
+import { useCurrency } from '@/components/providers/currency-provider';
 import { cn } from '@/utils/cn';
 
 /**
@@ -13,11 +15,12 @@ export interface MoneyProps extends React.HTMLAttributes<HTMLSpanElement> {
   cents: number;
 }
 
-/** A plain formatted currency amount, e.g. 1234 → "$12.34". */
+/** A plain formatted currency amount in the user's chosen currency. */
 export function Money({ cents, className, ...props }: MoneyProps) {
+  const { format } = useCurrency();
   return (
     <span className={cn('tabular-nums', className)} {...props}>
-      {formatCents(cents)}
+      {format(cents)}
     </span>
   );
 }
@@ -39,6 +42,7 @@ export function BalanceLabel({
   subject = 'you',
   className,
 }: BalanceLabelProps) {
+  const { format } = useCurrency();
   if (netCents === 0) {
     return (
       <span className={cn('text-sm text-muted-foreground', className)}>
@@ -48,7 +52,7 @@ export function BalanceLabel({
   }
 
   const owedToUser = netCents > 0;
-  const amount = formatCents(Math.abs(netCents));
+  const amount = format(Math.abs(netCents));
   const text = owedToUser
     ? subject === 'them'
       ? `owes you ${amount}`

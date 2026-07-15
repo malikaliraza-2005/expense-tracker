@@ -5,29 +5,18 @@ import { Logo } from '@/components/common/logo';
 import { PageHeader } from '@/components/common/page-header';
 import { AvatarUploader } from '@/components/profile/avatar-uploader';
 import { ProfileForm } from '@/components/profile/profile-form';
+import { CurrencySelect } from '@/components/settings/currency-select';
 import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { DEFAULT_LOCALE } from '@/constants/app';
+import { safeCurrency } from '@/constants/currencies';
 import { ROUTES } from '@/constants/routes';
 import { getCurrentProfile } from '@/lib/queries/profile';
 
 export const metadata: Metadata = { title: 'Profile' };
-
-/** Human-readable currency name for a code, e.g. "USD" -> "US Dollar (USD)". */
-function currencyLabel(code: string): string {
-  try {
-    const name = new Intl.DisplayNames([DEFAULT_LOCALE], {
-      type: 'currency',
-    }).of(code);
-    return name ? `${name} (${code})` : code;
-  } catch {
-    return code;
-  }
-}
 
 /**
  * Profile page (Phase 6). Server Component: reads the current user's RLS-scoped
@@ -41,8 +30,9 @@ export default async function ProfilePage() {
   return (
     <section className="mx-auto max-w-2xl space-y-6">
       <PageHeader
+        eyebrow="Account"
         title="Profile"
-        description="Manage how you appear to friends and groups."
+        description="Manage how you appear across your groups."
         action={<Logo size="md" />}
       />
 
@@ -65,13 +55,12 @@ export default async function ProfilePage() {
         <CardContent className="space-y-6">
           <ProfileForm fullName={profile.full_name} />
 
-          <div className="space-y-1">
+          <div className="space-y-2">
             <p className="text-sm font-medium leading-none">Preferred currency</p>
-            <p className="text-sm text-muted-foreground">
-              {currencyLabel(profile.preferred_currency)}
-            </p>
+            <CurrencySelect current={safeCurrency(profile.preferred_currency)} />
             <p className="text-xs text-muted-foreground">
-              This app uses a single currency for all balances.
+              Choose from every currency worldwide. All amounts display in your
+              chosen currency.
             </p>
           </div>
         </CardContent>

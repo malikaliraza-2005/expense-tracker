@@ -1,7 +1,40 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+
+  // Strip debug logging from the production client bundle (keep error/warn so
+  // the error boundary and real problems still surface). No effect in dev.
+  compiler: {
+    removeConsole:
+      process.env.NODE_ENV === 'production'
+        ? { exclude: ['error', 'warn'] }
+        : false,
+  },
+
+  // Gracefully catch links to routes removed in the members/expense-first
+  // pivot (groups, members, search, friends). Old bookmarks, a stale open tab,
+  // or the installed PWA can still point at these; without this they 404. Sent
+  // as temporary (307) rather than permanent so browsers don't hard-cache them
+  // while the product is still evolving. Runs before middleware, so these never
+  // reach a missing route.
+  async redirects() {
+    return [
+      { source: '/groups', destination: '/expenses', permanent: false },
+      { source: '/groups/:path*', destination: '/expenses', permanent: false },
+      { source: '/members', destination: '/expenses', permanent: false },
+      { source: '/members/:path*', destination: '/expenses', permanent: false },
+      { source: '/friends', destination: '/expenses', permanent: false },
+      { source: '/friends/:path*', destination: '/expenses', permanent: false },
+      { source: '/search', destination: '/expenses', permanent: false },
+    ];
+  },
+
   experimental: {
+    // Tree-shake barrel-file packages so a route only ships the icons / motion
+    // primitives it actually imports, not the whole library. Cuts First Load JS
+    // for icon- and animation-heavy routes.
+    optimizePackageImports: ['lucide-react', 'framer-motion', 'sonner'],
+
     // Server Actions are enabled by default in Next 14; kept explicit for clarity.
     // The avatar validation limit is 2 MB (see AVATAR_MAX_BYTES and the avatars
     // bucket file_size_limit). This transport ceiling is set above that so a

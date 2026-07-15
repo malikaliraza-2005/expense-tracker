@@ -29,7 +29,7 @@ export default async function EditExpensePage({
     getExpenseFormData(),
     listCategories(),
   ]);
-  if (!detail || !detail.isOwner || !formData) notFound();
+  if (!detail || !formData) notFound();
 
   const { expense } = detail;
 
@@ -50,7 +50,7 @@ export default async function EditExpensePage({
             mode="edit"
             categories={categories}
             scopes={formData.scopes}
-            currentUserId={formData.currentUserId}
+            selfMemberId={formData.selfMemberId}
             defaultDate={expense.expense_date}
             initial={{
               expenseId: expense.id,
@@ -60,13 +60,8 @@ export default async function EditExpensePage({
               categoryId: expense.category_id,
               expenseDate: expense.expense_date,
               paidBy: expense.paid_by,
-              description: expense.description,
               notes: expense.notes,
-              splitType: detail.splitType,
-              participants: detail.participants.map((participant) => ({
-                userId: participant.profile.id,
-                shareCents: participant.shareCents,
-              })),
+              memberIds: detail.participants.map((p) => p.member.id),
             }}
           />
         </CardContent>

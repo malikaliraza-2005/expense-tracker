@@ -1,94 +1,67 @@
-import { getFriends } from '@/lib/queries/friends';
-import { getGroupMembers, getGroups } from '@/lib/queries/groups';
+import { getUser } from '@/lib/auth';
+import { getSelfMemberId } from '@/lib/queries/balances';
+import { getMembers } from '@/lib/queries/members';
 import { createClient } from '@/lib/supabase/server';
 import type {
   ExpenseDetail,
   ExpenseListItem,
   ExpenseParticipant,
 } from '@/types/dto';
-import type { Category, Expense, Profile, SplitType } from '@/types/db';
+import type { Category, Expense, Member, SplitType } from '@/types/db';
 
 /**
- * Expense reads (Phase 4). Typed data-access over the RLS-scoped `expenses` /
- * `expense_splits` tables, joined to `categories` and `profiles`. RLS does the
- * scoping — these return only expenses the caller may see (group members,
- * personal parties, or split participants) — so no membership re-filtering is
- * needed here.
- *
- * Sort/scoping is supported for the list; richer filtering (by category,
- * member, amount) is scaffolded for Phase 6.
+ * Expense reads. Typed data-access over the owner-scoped `expenses` /
+ * `expense_splits` tables, joined to `categories` and `members`. RLS scopes
+ * everything to the owner.
  */
 
 /** Optional list scoping. `groupId` restricts to one group; `sort` by date. */
 export interface ExpenseFilter {
-  /** Restrict to a single group's expenses. */
   groupId?: string;
-  /** Date sort direction. Defaults to newest first. */
   sort?: 'newest' | 'oldest';
 }
 
-/** A person the current user can split with, for the expense form. */
-export interface ScopePerson {
+/** A member the owner can split with, for the expense form. */
+export interface ScopeMember {
   id: string;
   name: string;
+  isSelf: boolean;
 }
 
-/** A scope an expense can belong to: personal (`id: null`) or a group. */
+/** A scope an expense can belong to: general (`id: null`) or a group. */
 export interface ExpenseScope {
   id: string | null;
   label: string;
-  people: ScopePerson[];
+  members: ScopeMember[];
 }
 
-/** Everything the add/edit expense form needs to render its scope choices. */
+/** Everything the add/edit expense form needs to render its choices. */
 export interface ExpenseFormData {
-  currentUserId: string;
+  selfMemberId: string | null;
   scopes: ExpenseScope[];
 }
 
 /**
- * Build the scope choices for the expense form: a "Personal" scope (the user +
- * their friends) plus one scope per group the user belongs to (its members).
- * Reuses the friends/groups data-access rather than re-querying membership.
+ * Build the choices for the expense form: the self-member id plus a single
+ * "Everyone" scope containing all of the owner's members. (Groups were removed
+ * from the product; expenses are shared among the owner's members directly.)
  */
 export async function getExpenseFormData(): Promise<ExpenseFormData | null> {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getUser();
   if (!user) return null;
 
-  const nameFor = (id: string, fullName: string | null) =>
-    id === user.id ? 'You' : fullName || 'Unnamed';
+  const [selfMemberId, members] = await Promise.all([
+    getSelfMemberId(),
+    getMembers(),
+  ]);
 
-  const [friends, groups] = await Promise.all([getFriends(), getGroups()]);
-
-  const personal: ExpenseScope = {
+  const everyone: ExpenseScope = {
     id: null,
-    label: 'Personal',
-    people: [
-      { id: user.id, name: 'You' },
-      ...friends.map((friend) => ({
-        id: friend.profile.id,
-        name: friend.profile.full_name || 'Unnamed',
-      })),
-    ],
+    label: 'Everyone',
+    members: members.map((m) => ({ id: m.id, name: m.name, isSelf: m.is_self })),
   };
 
-  const groupScopes: ExpenseScope[] = [];
-  for (const { group } of groups) {
-    const members = await getGroupMembers(group.id);
-    groupScopes.push({
-      id: group.id,
-      label: group.name,
-      people: members.map((member) => ({
-        id: member.userId,
-        name: nameFor(member.userId, member.profile.full_name),
-      })),
-    });
-  }
-
-  return { currentUserId: user.id, scopes: [personal, ...groupScopes] };
+  return { selfMemberId, scopes: [everyone] };
 }
 
 /** Fetch category rows for a set of ids, keyed by id. */
@@ -101,20 +74,17 @@ async function fetchCategoriesById(
   return new Map((data ?? []).map((category) => [category.id, category]));
 }
 
-/** Fetch profile rows for a set of ids, keyed by id. */
-async function fetchProfilesById(
-  ids: string[],
-): Promise<Map<string, Profile>> {
+/** Fetch member rows for a set of ids, keyed by id. */
+async function fetchMembersById(ids: string[]): Promise<Map<string, Member>> {
   if (ids.length === 0) return new Map();
   const supabase = createClient();
-  const { data } = await supabase.from('profiles').select('*').in('id', ids);
-  return new Map((data ?? []).map((profile) => [profile.id, profile]));
+  const { data } = await supabase.from('members').select('*').in('id', ids);
+  return new Map((data ?? []).map((member) => [member.id, member]));
 }
 
 /**
- * Expenses visible to the current user, each joined to its category, payer, and
- * participant count. Sorted by expense date (newest first by default), then by
- * creation time for a stable order within a day.
+ * Expenses visible to the owner, each joined to its category, payer, and
+ * participant count. Sorted by expense date (newest first by default).
  */
 export async function listExpenses(
   filter?: ExpenseFilter,
@@ -131,20 +101,21 @@ export async function listExpenses(
 
   if (!expenses || expenses.length === 0) return [];
 
-  const categoriesById = await fetchCategoriesById([
-    ...new Set(expenses.map((expense) => expense.category_id)),
+  // These three reads are independent — run them concurrently rather than in a
+  // waterfall so the list resolves in one round-trip's worth of latency.
+  const [categoriesById, payersById, { data: splitRows }] = await Promise.all([
+    fetchCategoriesById([
+      ...new Set(expenses.map((expense) => expense.category_id)),
+    ]),
+    fetchMembersById([...new Set(expenses.map((expense) => expense.paid_by))]),
+    supabase
+      .from('expense_splits')
+      .select('expense_id')
+      .in(
+        'expense_id',
+        expenses.map((expense) => expense.id),
+      ),
   ]);
-  const payersById = await fetchProfilesById([
-    ...new Set(expenses.map((expense) => expense.paid_by)),
-  ]);
-
-  const { data: splitRows } = await supabase
-    .from('expense_splits')
-    .select('expense_id')
-    .in(
-      'expense_id',
-      expenses.map((expense) => expense.id),
-    );
 
   const countByExpense = new Map<string, number>();
   for (const row of splitRows ?? []) {
@@ -158,7 +129,7 @@ export async function listExpenses(
   for (const expense of expenses) {
     const category = categoriesById.get(expense.category_id);
     const payer = payersById.get(expense.paid_by);
-    if (!category || !payer) continue; // skip rows we can't fully resolve
+    if (!category || !payer) continue;
     items.push({
       expense,
       category,
@@ -171,18 +142,12 @@ export async function listExpenses(
 
 /**
  * Full detail for one expense: fields, category, payer, group, and each
- * participant's share. Returns `null` when the expense is not visible to the
- * caller (RLS-hidden or nonexistent).
+ * participant's share. Returns `null` when the expense is not the owner's.
  */
 export async function getExpense(
   expenseId: string,
 ): Promise<ExpenseDetail | null> {
   const supabase = createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
 
   const { data: expense } = await supabase
     .from('expenses')
@@ -193,7 +158,7 @@ export async function getExpense(
 
   const { data: splits } = await supabase
     .from('expense_splits')
-    .select('user_id, share_cents, split_type')
+    .select('member_id, share_cents, split_type')
     .eq('expense_id', expenseId);
 
   const [categoriesById, group] = await Promise.all([
@@ -211,25 +176,23 @@ export async function getExpense(
   const category = categoriesById.get(expense.category_id);
   if (!category) return null;
 
-  const participantIds = (splits ?? []).map((split) => split.user_id);
-  const profilesById = await fetchProfilesById([
+  const participantIds = (splits ?? []).map((split) => split.member_id);
+  const membersById = await fetchMembersById([
     expense.paid_by,
     ...participantIds,
   ]);
 
-  const payer = profilesById.get(expense.paid_by);
+  const payer = membersById.get(expense.paid_by);
   if (!payer) return null;
 
   const participants: ExpenseParticipant[] = (splits ?? [])
     .map((split) => {
-      const profile = profilesById.get(split.user_id);
-      if (!profile) return null;
-      return { profile, shareCents: split.share_cents };
+      const member = membersById.get(split.member_id);
+      if (!member) return null;
+      return { member, shareCents: split.share_cents };
     })
     .filter((entry): entry is ExpenseParticipant => entry !== null)
-    .sort((a, b) =>
-      (a.profile.full_name || '').localeCompare(b.profile.full_name || ''),
-    );
+    .sort((a, b) => a.member.name.localeCompare(b.member.name));
 
   const splitType: SplitType = splits?.[0]?.split_type ?? 'equal';
 
@@ -240,6 +203,5 @@ export async function getExpense(
     group: group ?? null,
     participants,
     splitType,
-    isOwner: expense.created_by === user.id,
   };
 }

@@ -25,16 +25,16 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        'flex animate-fade-in-up flex-col items-center justify-center rounded-xl border border-dashed bg-card/40 p-10 text-center',
+        'glass flex animate-fade-in-up flex-col items-center justify-center rounded-2xl border-dashed p-10 text-center',
         className,
       )}
     >
       {icon ? (
-        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-muted to-muted/60 text-muted-foreground shadow-soft ring-1 ring-border [&_svg]:h-7 [&_svg]:w-7">
+        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/12 text-primary shadow-glow-sm ring-1 ring-inset ring-primary/25 [&_svg]:h-7 [&_svg]:w-7">
           {icon}
         </div>
       ) : null}
-      <h2 className="text-base font-medium">{title}</h2>
+      <h2 className="text-base font-semibold">{title}</h2>
       {description ? (
         <p className="mt-1 max-w-sm text-sm text-muted-foreground">
           {description}

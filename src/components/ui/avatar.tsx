@@ -27,7 +27,7 @@ const Avatar = React.forwardRef<HTMLSpanElement, AvatarProps>(
       <span
         ref={ref}
         className={cn(
-          'relative inline-flex h-9 w-9 shrink-0 select-none items-center justify-center overflow-hidden rounded-full bg-muted text-xs font-medium text-muted-foreground ring-1 ring-border ring-offset-1 ring-offset-background',
+          'relative inline-flex h-9 w-9 shrink-0 select-none items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-secondary to-muted text-xs font-semibold text-foreground/80 ring-1 ring-inset ring-white/10 ring-offset-1 ring-offset-background',
           className,
         )}
         {...props}
@@ -41,6 +41,8 @@ const Avatar = React.forwardRef<HTMLSpanElement, AvatarProps>(
             src={src as string}
             alt={name ? `${name}'s avatar` : 'Avatar'}
             className="h-full w-full object-cover"
+            loading="lazy"
+            decoding="async"
             onError={() => setFailed(true)}
           />
         ) : (

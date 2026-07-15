@@ -9,6 +9,10 @@
  * Phase 1 (Authentication) adds `profiles` (migration 0001).
  * Phase 2 (Database, RLS & Balance Engine) adds every remaining table and the
  * `group_type` / `split_type` enums (migration 0002).
+ *
+ * Migration 0010 pivots participants from accounts to name-only `members`: every
+ * participant reference (payer, split, settlement party, group membership) now
+ * points at `members`, and `friendships` is removed. Everything is owner-scoped.
  */
 
 export type Json =
@@ -71,38 +75,32 @@ export interface Database {
         };
         Relationships: [];
       };
-      friendships: {
+      members: {
         Row: {
           id: string;
-          user_id: string;
-          friend_id: string;
-          status: string;
+          owner_id: string;
+          name: string;
+          is_self: boolean;
           created_at: string;
         };
         Insert: {
           id?: string;
-          user_id: string;
-          friend_id: string;
-          status?: string;
+          owner_id: string;
+          name: string;
+          is_self?: boolean;
           created_at?: string;
         };
         Update: {
           id?: string;
-          user_id?: string;
-          friend_id?: string;
-          status?: string;
+          owner_id?: string;
+          name?: string;
+          is_self?: boolean;
           created_at?: string;
         };
         Relationships: [
           {
-            foreignKeyName: 'friendships_user_id_fkey';
-            columns: ['user_id'];
-            referencedRelation: 'profiles';
-            referencedColumns: ['id'];
-          },
-          {
-            foreignKeyName: 'friendships_friend_id_fkey';
-            columns: ['friend_id'];
+            foreignKeyName: 'members_owner_id_fkey';
+            columns: ['owner_id'];
             referencedRelation: 'profiles';
             referencedColumns: ['id'];
           },
@@ -111,29 +109,29 @@ export interface Database {
       groups: {
         Row: {
           id: string;
+          owner_id: string;
           name: string;
           type: Database['public']['Enums']['group_type'];
-          created_by: string;
           created_at: string;
         };
         Insert: {
           id?: string;
+          owner_id: string;
           name: string;
           type?: Database['public']['Enums']['group_type'];
-          created_by: string;
           created_at?: string;
         };
         Update: {
           id?: string;
+          owner_id?: string;
           name?: string;
           type?: Database['public']['Enums']['group_type'];
-          created_by?: string;
           created_at?: string;
         };
         Relationships: [
           {
-            foreignKeyName: 'groups_created_by_fkey';
-            columns: ['created_by'];
+            foreignKeyName: 'groups_owner_id_fkey';
+            columns: ['owner_id'];
             referencedRelation: 'profiles';
             referencedColumns: ['id'];
           },
@@ -143,22 +141,19 @@ export interface Database {
         Row: {
           id: string;
           group_id: string;
-          user_id: string;
-          role: string;
+          member_id: string;
           joined_at: string;
         };
         Insert: {
           id?: string;
           group_id: string;
-          user_id: string;
-          role?: string;
+          member_id: string;
           joined_at?: string;
         };
         Update: {
           id?: string;
           group_id?: string;
-          user_id?: string;
-          role?: string;
+          member_id?: string;
           joined_at?: string;
         };
         Relationships: [
@@ -169,9 +164,9 @@ export interface Database {
             referencedColumns: ['id'];
           },
           {
-            foreignKeyName: 'group_members_user_id_fkey';
-            columns: ['user_id'];
-            referencedRelation: 'profiles';
+            foreignKeyName: 'group_members_member_id_fkey';
+            columns: ['member_id'];
+            referencedRelation: 'members';
             referencedColumns: ['id'];
           },
         ];
@@ -179,6 +174,7 @@ export interface Database {
       expenses: {
         Row: {
           id: string;
+          owner_id: string;
           group_id: string | null;
           title: string;
           description: string | null;
@@ -187,13 +183,13 @@ export interface Database {
           category_id: number;
           expense_date: string;
           paid_by: string;
-          created_by: string;
-          receipt_url: string | null;
           notes: string | null;
+          settled_at: string | null;
           created_at: string;
         };
         Insert: {
           id?: string;
+          owner_id: string;
           group_id?: string | null;
           title: string;
           description?: string | null;
@@ -202,13 +198,13 @@ export interface Database {
           category_id: number;
           expense_date?: string;
           paid_by: string;
-          created_by: string;
-          receipt_url?: string | null;
           notes?: string | null;
+          settled_at?: string | null;
           created_at?: string;
         };
         Update: {
           id?: string;
+          owner_id?: string;
           group_id?: string | null;
           title?: string;
           description?: string | null;
@@ -217,12 +213,17 @@ export interface Database {
           category_id?: number;
           expense_date?: string;
           paid_by?: string;
-          created_by?: string;
-          receipt_url?: string | null;
           notes?: string | null;
+          settled_at?: string | null;
           created_at?: string;
         };
         Relationships: [
+          {
+            foreignKeyName: 'expenses_owner_id_fkey';
+            columns: ['owner_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
           {
             foreignKeyName: 'expenses_group_id_fkey';
             columns: ['group_id'];
@@ -238,13 +239,7 @@ export interface Database {
           {
             foreignKeyName: 'expenses_paid_by_fkey';
             columns: ['paid_by'];
-            referencedRelation: 'profiles';
-            referencedColumns: ['id'];
-          },
-          {
-            foreignKeyName: 'expenses_created_by_fkey';
-            columns: ['created_by'];
-            referencedRelation: 'profiles';
+            referencedRelation: 'members';
             referencedColumns: ['id'];
           },
         ];
@@ -253,7 +248,7 @@ export interface Database {
         Row: {
           id: string;
           expense_id: string;
-          user_id: string;
+          member_id: string;
           share_cents: number;
           split_type: Database['public']['Enums']['split_type'];
           created_at: string;
@@ -261,15 +256,15 @@ export interface Database {
         Insert: {
           id?: string;
           expense_id: string;
-          user_id: string;
+          member_id: string;
           share_cents: number;
-          split_type: Database['public']['Enums']['split_type'];
+          split_type?: Database['public']['Enums']['split_type'];
           created_at?: string;
         };
         Update: {
           id?: string;
           expense_id?: string;
-          user_id?: string;
+          member_id?: string;
           share_cents?: number;
           split_type?: Database['public']['Enums']['split_type'];
           created_at?: string;
@@ -282,9 +277,9 @@ export interface Database {
             referencedColumns: ['id'];
           },
           {
-            foreignKeyName: 'expense_splits_user_id_fkey';
-            columns: ['user_id'];
-            referencedRelation: 'profiles';
+            foreignKeyName: 'expense_splits_member_id_fkey';
+            columns: ['member_id'];
+            referencedRelation: 'members';
             referencedColumns: ['id'];
           },
         ];
@@ -292,6 +287,7 @@ export interface Database {
       settlements: {
         Row: {
           id: string;
+          owner_id: string;
           group_id: string | null;
           payer_id: string;
           receiver_id: string;
@@ -302,6 +298,7 @@ export interface Database {
         };
         Insert: {
           id?: string;
+          owner_id: string;
           group_id?: string | null;
           payer_id: string;
           receiver_id: string;
@@ -312,6 +309,7 @@ export interface Database {
         };
         Update: {
           id?: string;
+          owner_id?: string;
           group_id?: string | null;
           payer_id?: string;
           receiver_id?: string;
@@ -322,6 +320,12 @@ export interface Database {
         };
         Relationships: [
           {
+            foreignKeyName: 'settlements_owner_id_fkey';
+            columns: ['owner_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
             foreignKeyName: 'settlements_group_id_fkey';
             columns: ['group_id'];
             referencedRelation: 'groups';
@@ -330,13 +334,13 @@ export interface Database {
           {
             foreignKeyName: 'settlements_payer_id_fkey';
             columns: ['payer_id'];
-            referencedRelation: 'profiles';
+            referencedRelation: 'members';
             referencedColumns: ['id'];
           },
           {
             foreignKeyName: 'settlements_receiver_id_fkey';
             columns: ['receiver_id'];
-            referencedRelation: 'profiles';
+            referencedRelation: 'members';
             referencedColumns: ['id'];
           },
         ];
@@ -344,15 +348,15 @@ export interface Database {
     };
     Views: Record<string, never>;
     Functions: {
-      // Phase 3 — resolve an email to a profile id (migration 0007). Returns
-      // the uuid for an exact, case-insensitive match, or null when unknown.
-      find_profile_by_email: {
-        Args: { lookup_email: string };
+      // Migration 0010 — return (creating on first call) the caller's self-member
+      // id, so the owner can always be a payer/participant.
+      ensure_self_member: {
+        Args: Record<string, never>;
         Returns: string;
       };
-      // Phase 4 — atomic expense + splits write (migration 0005). Persists the
-      // expense together with its pre-validated splits in one transaction and
-      // returns the affected expense row.
+      // Migration 0010 — atomic member-based expense + splits write. Persists the
+      // expense with its pre-validated integer-cent shares in one transaction and
+      // returns the affected expense row. `member_id` keys each split.
       create_expense_with_splits: {
         Args: {
           p_group_id: string | null;
@@ -365,7 +369,7 @@ export interface Database {
           p_paid_by: string;
           p_notes: string | null;
           p_split_type: Database['public']['Enums']['split_type'];
-          p_splits: Array<{ user_id: string; share_cents: number }>;
+          p_splits: Array<{ member_id: string; share_cents: number }>;
         };
         Returns: Database['public']['Tables']['expenses']['Row'];
       };
@@ -382,7 +386,7 @@ export interface Database {
           p_paid_by: string;
           p_notes: string | null;
           p_split_type: Database['public']['Enums']['split_type'];
-          p_splits: Array<{ user_id: string; share_cents: number }>;
+          p_splits: Array<{ member_id: string; share_cents: number }>;
         };
         Returns: Database['public']['Tables']['expenses']['Row'];
       };

@@ -1,16 +1,17 @@
+import { AppHeader } from '@/components/layout/app-header';
+import { BottomNav } from '@/components/layout/bottom-nav';
 import { DecorativeBackground } from '@/components/common/decorative-background';
-import { AppSidebar } from '@/components/layout/app-sidebar';
-import { TopNav } from '@/components/layout/top-nav';
+import { CurrencyProvider } from '@/components/providers/currency-provider';
 import { requireUser } from '@/lib/auth';
 import { getCurrentProfile } from '@/lib/queries/profile';
 
 /**
- * Protected app shell layout (Phase 1, responsive chrome added in Phase 6).
+ * Protected app shell. Server-side auth guard (`requireUser`) redirects
+ * unauthenticated visitors to login (defense in depth alongside middleware).
  *
- * Server-side auth guard: `requireUser` redirects unauthenticated visitors to
- * the login page (defense in depth alongside middleware). Renders the fixed
- * desktop sidebar and the mobile top bar / drawer around the page content, both
- * seeded with the current user's name and avatar.
+ * The chrome is a single responsive top header with an animated pill nav on
+ * desktop, plus a fixed neon bottom navigation bar on mobile — no sidebar.
+ * Content is centred and given bottom padding so it clears the mobile nav.
  */
 export default async function AppLayout({
   children,
@@ -23,15 +24,15 @@ export default async function AppLayout({
   const avatarUrl = profile?.avatar_url ?? null;
 
   return (
-    <div className="min-h-screen">
-      <DecorativeBackground />
-      <AppSidebar name={name} avatarUrl={avatarUrl} />
-      <div className="md:pl-64">
-        <TopNav name={name} avatarUrl={avatarUrl} />
-        <main className="mx-auto max-w-5xl animate-fade-in px-4 py-6 sm:px-6">
+    <CurrencyProvider initialCurrency={profile?.preferred_currency}>
+      <div className="relative min-h-screen">
+        <DecorativeBackground />
+        <AppHeader name={name} avatarUrl={avatarUrl} />
+        <main className="mx-auto max-w-6xl px-4 py-6 pb-safe-nav sm:px-6 md:pb-10">
           {children}
         </main>
+        <BottomNav />
       </div>
-    </div>
+    </CurrencyProvider>
   );
 }

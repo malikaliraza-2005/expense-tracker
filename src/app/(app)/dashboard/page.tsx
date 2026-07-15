@@ -1,71 +1,64 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { LayoutDashboard, Plus, Users } from 'lucide-react';
+import { LayoutDashboard, Plus } from 'lucide-react';
 
 import { EmptyState } from '@/components/common/empty-state';
 import { PageHeader } from '@/components/common/page-header';
-import { GroupsOverview } from '@/components/dashboard/groups-overview';
+import { LiveClock } from '@/components/dashboard/live-clock';
+import { OutstandingHero } from '@/components/dashboard/outstanding-hero';
 import { RecentExpenses } from '@/components/dashboard/recent-expenses';
-import { RecentSettlements } from '@/components/dashboard/recent-settlements';
+import { SpendingInsights } from '@/components/dashboard/spending-insights';
 import { SummaryCards } from '@/components/dashboard/summary-cards';
+import { Reveal } from '@/components/motion/reveal';
 import { Button } from '@/components/ui/button';
 import { ROUTES } from '@/constants/routes';
 import { requireUser } from '@/lib/auth';
 import { getDashboard } from '@/lib/queries/dashboard';
+import { getCurrentProfile } from '@/lib/queries/profile';
 
 export const metadata: Metadata = { title: 'Dashboard' };
 
 /**
- * Dashboard (Phase 5). Server Component: the home overview. Reads the assembled
- * dashboard data (balance summary + recent activity + groups, all RLS-scoped and
- * settlement-aware) and renders the summary cards, recent expenses, recent
- * settlements, and groups overview — with quick-add entry points. When there's no
- * activity at all, it shows a single onboarding empty state instead.
+ * Dashboard (redesigned). An outstanding-first overview: a hero splitting
+ * outstanding vs settled spend, key stat tiles, spending insights, and only the
+ * outstanding expenses — each section easing in on entry. When there's no
+ * activity at all, a single onboarding empty state takes over.
  */
 export default async function DashboardPage() {
   const user = await requireUser();
-  const dashboard = await getDashboard();
+  const [dashboard, profile] = await Promise.all([
+    getDashboard(),
+    getCurrentProfile(),
+  ]);
 
-  const isEmpty =
-    !dashboard ||
-    (dashboard.recentExpenses.length === 0 &&
-      dashboard.recentSettlements.length === 0 &&
-      dashboard.groups.length === 0 &&
-      dashboard.summary.netCents === 0 &&
-      dashboard.summary.owedToMeCents === 0 &&
-      dashboard.summary.iOweCents === 0);
+  const isEmpty = !dashboard || dashboard.expenseCount === 0;
 
   return (
     <section className="space-y-6">
       <PageHeader
+        eyebrow="Overview"
         title="Dashboard"
-        description="Your balances and recent activity at a glance."
+        description="What's outstanding and your recent activity at a glance."
         action={
-          <div className="flex gap-2">
-            <Button asChild variant="outline">
-              <Link href={ROUTES.newGroup}>
-                <Users />
-                New group
-              </Link>
-            </Button>
-            <Button asChild>
-              <Link href={ROUTES.newExpense}>
-                <Plus />
-                Add expense
-              </Link>
-            </Button>
-          </div>
+          <Button asChild variant="gradient">
+            <Link href={ROUTES.newExpense}>
+              <Plus />
+              Add expense
+            </Link>
+          </Button>
         }
       />
+
+      <LiveClock name={profile?.full_name ?? null} />
 
       {isEmpty ? (
         <EmptyState
           icon={<LayoutDashboard />}
           title="Nothing here yet"
-          description="Add an expense or create a group to start tracking balances. Your totals and recent activity will show up here."
+          description="Add your first expense and split it with the people you share costs with. Your totals, insights, and outstanding items will show up here."
           action={
-            <Button asChild>
+            <Button asChild variant="gradient">
               <Link href={ROUTES.newExpense}>
                 <Plus />
                 Add your first expense
@@ -75,16 +68,40 @@ export default async function DashboardPage() {
         />
       ) : (
         <>
-          <SummaryCards summary={dashboard.summary} />
-          <RecentExpenses
-            expenses={dashboard.recentExpenses}
-            currentUserId={user.id}
-          />
-          <RecentSettlements
-            settlements={dashboard.recentSettlements}
-            currentUserId={user.id}
-          />
-          <GroupsOverview groups={dashboard.groups} />
+          <Reveal>
+            <OutstandingHero
+              outstandingCents={dashboard.outstandingCents}
+              settledCents={dashboard.settledCents}
+              outstandingCount={dashboard.outstandingCount}
+              settledCount={dashboard.settledCount}
+            />
+          </Reveal>
+
+          <Reveal delay={0.05}>
+            <SummaryCards
+              monthlySpendCents={dashboard.monthlySpendCents}
+              expenseCount={dashboard.expenseCount}
+              outstandingCount={dashboard.outstandingCount}
+              settledCount={dashboard.settledCount}
+            />
+          </Reveal>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            {dashboard.categoryBreakdown.length > 0 ? (
+              <Reveal delay={0.1}>
+                <SpendingInsights
+                  breakdown={dashboard.categoryBreakdown}
+                  monthlySpendCents={dashboard.monthlySpendCents}
+                />
+              </Reveal>
+            ) : null}
+            <Reveal delay={0.15}>
+              <RecentExpenses
+                expenses={dashboard.recentOutstanding}
+                currentUserId={user.id}
+              />
+            </Reveal>
+          </div>
         </>
       )}
     </section>

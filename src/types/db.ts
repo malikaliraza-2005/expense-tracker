@@ -26,7 +26,8 @@ export type Profile = Tables<'profiles'>;
 
 /** Phase 2 — full schema. Row-shaped entity aliases. */
 export type Category = Tables<'categories'>;
-export type Friendship = Tables<'friendships'>;
+/** Migration 0010 — a name-only person managed by the owner. */
+export type Member = Tables<'members'>;
 export type Group = Tables<'groups'>;
 export type GroupMember = Tables<'group_members'>;
 export type Expense = Tables<'expenses'>;

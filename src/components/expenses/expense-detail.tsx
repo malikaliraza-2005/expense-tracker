@@ -5,11 +5,13 @@ import * as React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
-import { Pencil, Trash2 } from 'lucide-react';
+import { Check, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { deleteExpense } from '@/actions/expenses';
+import { LocalDate } from '@/components/common/local-date';
 import { Money } from '@/components/common/money';
+import { SettleToggle } from '@/components/expenses/settle-toggle';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -31,27 +33,24 @@ import {
 } from '@/components/ui/dialog';
 import { categoryIcon } from '@/constants/categories';
 import { ROUTES } from '@/constants/routes';
-import { splitTypeLabel } from '@/constants/split-types';
 import type { ExpenseDetail as ExpenseDetailData } from '@/types/dto';
-import { formatDate } from '@/utils/date';
 
 /**
- * Expense detail view (Phase 4). Shows the expense fields, its category, payer,
- * group, and every participant's share. The creator additionally gets edit and
- * delete controls; delete confirms first and reverses balances on success.
+ * Expense detail view. Shows the expense fields, its category, payer, group, and
+ * every participant's equal share, with edit and delete controls; delete confirms
+ * first and reverses balances on success.
  */
 export function ExpenseDetail({
   detail,
-  currentUserId,
 }: {
   detail: ExpenseDetailData;
-  currentUserId: string;
+  /** Accepted for call-site compatibility; the "You" label uses `is_self`. */
+  currentUserId?: string;
 }) {
-  const { expense, category, payer, group, participants, splitType, isOwner } =
-    detail;
+  const { expense, category, payer, participants } = detail;
   const Icon = categoryIcon(category.icon);
-  const payerName =
-    payer.id === currentUserId ? 'You' : payer.full_name || 'Someone';
+  const payerName = payer.is_self ? 'You' : payer.name;
+  const settled = Boolean(expense.settled_at);
 
   return (
     <section className="space-y-6">
@@ -61,25 +60,34 @@ export function ExpenseDetail({
             <Icon />
           </span>
           <div className="space-y-1">
-            <h1 className="text-2xl font-semibold tracking-tight">
-              {expense.title}
-            </h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-semibold tracking-tight">
+                {expense.title}
+              </h1>
+              {settled ? (
+                <Badge variant="success">
+                  <Check className="h-3 w-3" />
+                  Settled
+                </Badge>
+              ) : (
+                <Badge variant="warning">Outstanding</Badge>
+              )}
+            </div>
             <p className="text-sm text-muted-foreground">
-              {category.name} · {formatDate(expense.expense_date)}
+              {category.name} · <LocalDate value={expense.expense_date} />
             </p>
           </div>
         </div>
-        {isOwner ? (
-          <div className="flex gap-2">
-            <Button asChild variant="outline" size="sm">
-              <Link href={`/expenses/${expense.id}/edit`}>
-                <Pencil />
-                Edit
-              </Link>
-            </Button>
-            <DeleteExpenseButton expenseId={expense.id} title={expense.title} />
-          </div>
-        ) : null}
+        <div className="flex flex-wrap gap-2">
+          <SettleToggle expenseId={expense.id} settled={settled} />
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/expenses/${expense.id}/edit`}>
+              <Pencil />
+              Edit
+            </Link>
+          </Button>
+          <DeleteExpenseButton expenseId={expense.id} title={expense.title} />
+        </div>
       </div>
 
       <Card>
@@ -91,20 +99,18 @@ export function ExpenseDetail({
             <Money cents={expense.amount_cents} className="font-medium" />
           </Row>
           <Row label="Paid by">{payerName}</Row>
-          <Row label="Group">
-            {group ? (
-              <Link
-                href={`/groups/${group.id}`}
-                className="font-medium underline-offset-4 hover:underline"
-              >
-                {group.name}
-              </Link>
+          <Row label="Status">
+            {settled ? (
+              <Badge variant="success">
+                <Check className="h-3 w-3" />
+                Settled
+              </Badge>
             ) : (
-              <span className="text-muted-foreground">Personal</span>
+              <Badge variant="warning">Outstanding</Badge>
             )}
           </Row>
           <Row label="Split">
-            <Badge variant="secondary">{splitTypeLabel(splitType)}</Badge>
+            <Badge variant="secondary">Split equally</Badge>
           </Row>
           {expense.notes ? <Row label="Notes">{expense.notes}</Row> : null}
         </CardContent>
@@ -117,21 +123,16 @@ export function ExpenseDetail({
         <CardContent>
           <ul className="space-y-2">
             {participants.map((participant) => {
-              const name =
-                participant.profile.id === currentUserId
-                  ? 'You'
-                  : participant.profile.full_name || 'Unnamed';
+              const name = participant.member.is_self
+                ? 'You'
+                : participant.member.name;
               return (
                 <li
-                  key={participant.profile.id}
+                  key={participant.member.id}
                   className="flex items-center justify-between gap-3"
                 >
                   <span className="flex min-w-0 items-center gap-2">
-                    <Avatar
-                      name={participant.profile.full_name}
-                      src={participant.profile.avatar_url}
-                      className="h-8 w-8"
-                    />
+                    <Avatar name={participant.member.name} className="h-8 w-8" />
                     <span className="truncate text-sm">{name}</span>
                   </span>
                   <Money

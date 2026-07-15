@@ -1,5 +1,7 @@
 import Link from 'next/link';
 
+import { CheckCircle2 } from 'lucide-react';
+
 import { ExpenseList } from '@/components/expenses/expense-list';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,9 +9,9 @@ import { ROUTES } from '@/constants/routes';
 import type { ExpenseListItem } from '@/types/dto';
 
 /**
- * Dashboard "Recent expenses" panel (presentational, Server-rendered). Reuses the
- * Phase 4 {@link ExpenseList} for the rows and adds a header + "View all" link.
- * The empty case is a short prompt rather than a dead-end.
+ * Dashboard "Outstanding expenses" panel (Server-rendered). Surfaces only the
+ * not-yet-settled expenses. When there are none, it shows a celebratory
+ * all-settled state instead of a dead end.
  */
 export function RecentExpenses({
   expenses,
@@ -21,7 +23,7 @@ export function RecentExpenses({
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
-        <CardTitle className="text-base">Recent expenses</CardTitle>
+        <CardTitle className="text-base">Outstanding expenses</CardTitle>
         {expenses.length > 0 ? (
           <Button asChild variant="outline" size="sm">
             <Link href={ROUTES.expenses}>View all</Link>
@@ -30,9 +32,17 @@ export function RecentExpenses({
       </CardHeader>
       <CardContent>
         {expenses.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No expenses yet — add one to start tracking who owes what.
-          </p>
+          <div className="flex flex-col items-center gap-3 py-8 text-center">
+            <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-income/15 text-income ring-1 ring-inset ring-income/25 [&_svg]:h-7 [&_svg]:w-7">
+              <CheckCircle2 />
+            </span>
+            <div>
+              <p className="font-semibold">All settled up 🎉</p>
+              <p className="text-sm text-muted-foreground">
+                You have no outstanding expenses right now.
+              </p>
+            </div>
+          </div>
         ) : (
           <ExpenseList expenses={expenses} currentUserId={currentUserId} />
         )}

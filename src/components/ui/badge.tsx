@@ -5,15 +5,19 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/utils/cn';
 
 const badgeVariants = cva(
-  'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 [&:not(.text-foreground)]:shadow-sm',
+  'inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
   {
     variants: {
       variant: {
-        default: 'border-transparent bg-primary text-primary-foreground',
-        secondary: 'border-transparent bg-secondary text-secondary-foreground',
+        default:
+          'border-primary/30 bg-primary/15 text-primary shadow-glow-sm',
+        secondary: 'border-border/60 bg-secondary text-secondary-foreground',
         destructive:
-          'border-transparent bg-destructive text-destructive-foreground',
-        outline: 'text-foreground',
+          'border-expense/30 bg-expense/15 text-expense',
+        success: 'border-income/30 bg-income/15 text-income',
+        warning: 'border-warning/30 bg-warning/15 text-warning',
+        purple: 'border-purple/30 bg-purple/15 text-purple',
+        outline: 'border-border text-foreground',
       },
     },
     defaultVariants: {

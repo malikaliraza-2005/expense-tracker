@@ -33,3 +33,26 @@ export function categoryIcon(slug: string | null | undefined): LucideIcon {
   if (!slug) return Tag;
   return CATEGORY_ICONS[slug] ?? Tag;
 }
+
+/**
+ * Neon accent palette for charts/glyphs. Categories have no colour column, so we
+ * derive a stable colour from a string key (icon slug or name) — the same
+ * category always maps to the same neon token, keeping charts and lists in sync.
+ */
+export const CHART_COLORS = [
+  'hsl(var(--primary))',
+  'hsl(var(--purple))',
+  'hsl(var(--cyan))',
+  'hsl(var(--income))',
+  'hsl(var(--warning))',
+  'hsl(var(--expense))',
+] as const;
+
+/** Deterministically map any key to one of the neon chart colours. */
+export function colorForKey(key: string): string {
+  let hash = 0;
+  for (let i = 0; i < key.length; i += 1) {
+    hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  }
+  return CHART_COLORS[hash % CHART_COLORS.length];
+}

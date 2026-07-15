@@ -8,7 +8,9 @@ import { firstError } from '@/schemas/auth.schema';
 import {
   AVATAR_ALLOWED_TYPES,
   AVATAR_MAX_BYTES,
+  validateUpdateCurrency,
   validateUpdateProfile,
+  type UpdateCurrencyFormInput,
   type UpdateProfileFormInput,
 } from '@/schemas/profile.schema';
 import type { ActionResult } from '@/types';
@@ -58,6 +60,41 @@ export async function updateProfile(
   const { data, error } = await supabase
     .from('profiles')
     .update({ full_name: parsed.data.fullName })
+    .eq('id', user.id)
+    .select('*')
+    .single<Profile>();
+
+  if (error || !data) return { ok: false, error: GENERIC_ERROR };
+
+  revalidateProfileSurfaces();
+  return { ok: true, data };
+}
+
+/**
+ * Update the current user's preferred display currency. Money across the app is
+ * formatted in this currency (no FX conversion — a single-currency display
+ * choice). Revalidates the shell so every amount re-renders with the new symbol.
+ */
+export async function updateCurrency(
+  input: UpdateCurrencyFormInput,
+): Promise<ActionResult<Profile>> {
+  const parsed = validateUpdateCurrency(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: firstError(parsed.errors) ?? 'Choose a valid currency.',
+    };
+  }
+
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'You must be signed in.' };
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({ preferred_currency: parsed.data.currency })
     .eq('id', user.id)
     .select('*')
     .single<Profile>();

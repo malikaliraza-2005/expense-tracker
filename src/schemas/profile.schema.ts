@@ -14,9 +14,29 @@ import {
   FULL_NAME_MAX_LENGTH,
   type ValidationResult,
 } from '@/schemas/auth.schema';
+import { isValidCurrencyCode } from '@/constants/currencies';
 
 export interface UpdateProfileInput {
   fullName: string;
+}
+
+export interface UpdateCurrencyInput {
+  currency: string;
+}
+
+export interface UpdateCurrencyFormInput {
+  currency?: unknown;
+}
+
+/** Validate a chosen currency: a recognised ISO 4217 code (uppercased). */
+export function validateUpdateCurrency(
+  input: UpdateCurrencyFormInput,
+): ValidationResult<UpdateCurrencyInput> {
+  const raw = typeof input.currency === 'string' ? input.currency.trim().toUpperCase() : '';
+  if (!isValidCurrencyCode(raw)) {
+    return { success: false, errors: { currency: 'Choose a valid currency.' } };
+  }
+  return { success: true, data: { currency: raw } };
 }
 
 /** Raw, untrusted form shape. */
