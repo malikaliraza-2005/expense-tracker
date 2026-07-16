@@ -16,21 +16,30 @@ export interface CurrencyInfo {
   symbol: string;
 }
 
-/** A small set surfaced first in pickers for quick access. */
+/**
+ * A small set surfaced first in pickers for quick access. Order matters — it's
+ * the exact display order of the "Popular" group. Globally most-used currencies
+ * lead, then the app's core regional set, then the remaining majors.
+ */
 export const POPULAR_CURRENCIES = [
+  // Most-used worldwide (reserve / most-traded).
   'USD',
   'EUR',
   'GBP',
+  'JPY',
+  'CNY',
+  // Core regional set for this app's audience.
   'PKR',
   'INR',
   'AED',
   'SAR',
-  'JPY',
-  'CNY',
+  // Other widely-used majors.
   'CAD',
   'AUD',
   'CHF',
   'SGD',
+  'HKD',
+  'NZD',
 ] as const;
 
 /** Every ISO 4217 code the runtime supports (falls back to the popular set). */

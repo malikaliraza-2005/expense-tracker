@@ -63,6 +63,24 @@ export interface GroupDetail {
   summary: GroupSummary;
 }
 
+/** A group member with their in-group paid / share / net figures. */
+export interface GroupMemberStatDto {
+  member: Member;
+  isSelf: boolean;
+  /** Total value of expenses this member fronted, within the group. */
+  paidCents: number;
+  /** This member's total share of the group's expenses. */
+  owesCents: number;
+  /** The member's own settlement-aware net standing. > 0 owed; < 0 owes. */
+  netCents: number;
+  /**
+   * The owner-centric net with this member within the group: > 0 they owe the
+   * owner, < 0 the owner owes them, 0 when square. This is the settle-able
+   * figure (the owner records payments), and it drives the card's Settle Up.
+   */
+  ownerNetCents: number;
+}
+
 /** One directed debt in a ledger: `from` owes `to` `amountCents`. */
 export interface LedgerEntry {
   from: Member;
@@ -84,10 +102,20 @@ export interface ExpenseListItem {
   participantCount: number;
 }
 
-/** One participant's share within an expense detail view. */
+/**
+ * One participant's per-expense ledger within an expense detail view: what they
+ * fronted, their share, and what's still outstanding on this expense. `shareCents`
+ * is kept as the canonical share (identical to `owedCents`).
+ */
 export interface ExpenseParticipant {
   member: Member;
   shareCents: number;
+  /** Amount this member fronted for the expense — the full total if the payer. */
+  paidCents: number;
+  /** This member's equal share of the expense (same value as `shareCents`). */
+  owedCents: number;
+  /** Still-outstanding on this expense; 0 once the expense is settled. */
+  remainingCents: number;
 }
 
 /** Full detail for one expense: fields, category, payer, group, and splits. */

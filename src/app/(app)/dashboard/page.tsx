@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { LayoutDashboard, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 
-import { EmptyState } from '@/components/common/empty-state';
 import { PageHeader } from '@/components/common/page-header';
+import { GettingStarted } from '@/components/dashboard/getting-started';
 import { LiveClock } from '@/components/dashboard/live-clock';
 import { OutstandingHero } from '@/components/dashboard/outstanding-hero';
 import { RecentExpenses } from '@/components/dashboard/recent-expenses';
@@ -15,7 +15,9 @@ import { Button } from '@/components/ui/button';
 import { ROUTES } from '@/constants/routes';
 import { requireUser } from '@/lib/auth';
 import { getDashboard } from '@/lib/queries/dashboard';
+import { getMembers } from '@/lib/queries/members';
 import { getCurrentProfile } from '@/lib/queries/profile';
+import { listSettlements } from '@/lib/queries/settlements';
 
 export const metadata: Metadata = { title: 'Dashboard' };
 
@@ -27,12 +29,21 @@ export const metadata: Metadata = { title: 'Dashboard' };
  */
 export default async function DashboardPage() {
   const user = await requireUser();
-  const [dashboard, profile] = await Promise.all([
+  const [dashboard, profile, members, settlements] = await Promise.all([
     getDashboard(),
     getCurrentProfile(),
+    getMembers(),
+    listSettlements(),
   ]);
 
   const isEmpty = !dashboard || dashboard.expenseCount === 0;
+
+  // Onboarding progress: the core loop is add-expense → add-people → settle-up.
+  // The nudge shows until all three are done, then retires itself.
+  const hasExpense = (dashboard?.expenseCount ?? 0) > 0;
+  const hasPeople = members.length > 1; // self plus at least one other
+  const hasPayment = settlements.length > 0;
+  const onboardingComplete = hasExpense && hasPeople && hasPayment;
 
   return (
     <section className="space-y-6">
@@ -52,21 +63,16 @@ export default async function DashboardPage() {
 
       <LiveClock name={profile?.full_name ?? null} />
 
-      {isEmpty ? (
-        <EmptyState
-          icon={<LayoutDashboard />}
-          title="Nothing here yet"
-          description="Add your first expense and split it with the people you share costs with. Your totals, insights, and outstanding items will show up here."
-          action={
-            <Button asChild variant="gradient">
-              <Link href={ROUTES.newExpense}>
-                <Plus />
-                Add your first expense
-              </Link>
-            </Button>
-          }
+      {!onboardingComplete ? (
+        <GettingStarted
+          name={profile?.full_name ?? null}
+          hasExpense={hasExpense}
+          hasPeople={hasPeople}
+          hasPayment={hasPayment}
         />
-      ) : (
+      ) : null}
+
+      {isEmpty ? null : (
         <>
           <Reveal>
             <OutstandingHero

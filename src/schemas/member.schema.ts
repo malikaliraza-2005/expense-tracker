@@ -10,23 +10,30 @@ import type { ValidationResult } from '@/schemas/auth.schema';
 
 export const MEMBER_NAME_MIN_LENGTH = 1;
 export const MEMBER_NAME_MAX_LENGTH = 60;
+export const MEMBER_EMAIL_MAX_LENGTH = 200;
 
-export interface MemberNameInput {
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export interface MemberInput {
   name: string;
+  email: string | null;
 }
 
 export interface AddMemberFormInput {
   name?: unknown;
+  email?: unknown;
 }
 
 export interface RenameMemberFormInput {
   memberId?: unknown;
   name?: unknown;
+  email?: unknown;
 }
 
 export interface RenameMemberInput {
   memberId: string;
   name: string;
+  email: string | null;
 }
 
 function asString(value: unknown): string {
@@ -41,28 +48,46 @@ function validateName(raw: string): string | undefined {
   return undefined;
 }
 
-/** Validate a new member's name. */
-export function validateAddMember(
-  input: AddMemberFormInput,
-): ValidationResult<MemberNameInput> {
-  const name = asString(input.name).trim();
-  const error = validateName(name);
-  if (error) return { success: false, errors: { name: error } };
-  return { success: true, data: { name } };
+/** Optional email: only validated when non-empty. Returns an error message. */
+function validateOptionalEmail(raw: string): string | undefined {
+  if (!raw) return undefined;
+  if (raw.length > MEMBER_EMAIL_MAX_LENGTH) return 'That email is too long.';
+  if (!EMAIL_RE.test(raw)) return 'Enter a valid email address.';
+  return undefined;
 }
 
-/** Validate a rename: a target member id plus the new name. */
+/** Validate a new member: a required name and an optional email. */
+export function validateAddMember(
+  input: AddMemberFormInput,
+): ValidationResult<MemberInput> {
+  const name = asString(input.name).trim();
+  const email = asString(input.email).trim();
+
+  const errors: Partial<Record<keyof MemberInput, string>> = {};
+  const nameError = validateName(name);
+  if (nameError) errors.name = nameError;
+  const emailError = validateOptionalEmail(email);
+  if (emailError) errors.email = emailError;
+
+  if (Object.keys(errors).length > 0) return { success: false, errors };
+  return { success: true, data: { name, email: email || null } };
+}
+
+/** Validate an edit: a target member id, a new name, and an optional email. */
 export function validateRenameMember(
   input: RenameMemberFormInput,
 ): ValidationResult<RenameMemberInput> {
   const memberId = asString(input.memberId).trim();
   const name = asString(input.name).trim();
+  const email = asString(input.email).trim();
 
   const errors: Partial<Record<keyof RenameMemberInput, string>> = {};
   if (!memberId) errors.memberId = 'Missing member.';
   const nameError = validateName(name);
   if (nameError) errors.name = nameError;
+  const emailError = validateOptionalEmail(email);
+  if (emailError) errors.email = emailError;
 
   if (Object.keys(errors).length > 0) return { success: false, errors };
-  return { success: true, data: { memberId, name } };
+  return { success: true, data: { memberId, name, email: email || null } };
 }

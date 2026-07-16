@@ -80,21 +80,28 @@ export interface Database {
           id: string;
           owner_id: string;
           name: string;
+          email: string | null;
           is_self: boolean;
+          // Migration 0014 — the real account that claimed this member, or null.
+          linked_user_id: string | null;
           created_at: string;
         };
         Insert: {
           id?: string;
           owner_id: string;
           name: string;
+          email?: string | null;
           is_self?: boolean;
+          linked_user_id?: string | null;
           created_at?: string;
         };
         Update: {
           id?: string;
           owner_id?: string;
           name?: string;
+          email?: string | null;
           is_self?: boolean;
+          linked_user_id?: string | null;
           created_at?: string;
         };
         Relationships: [
@@ -102,6 +109,72 @@ export interface Database {
             foreignKeyName: 'members_owner_id_fkey';
             columns: ['owner_id'];
             referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'members_linked_user_id_fkey';
+            columns: ['linked_user_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      // Migration 0014 — email invites asking a recipient to register and claim
+      // a member row.
+      invitations: {
+        Row: {
+          id: string;
+          inviter_id: string;
+          member_id: string;
+          email: string;
+          token: string;
+          target_expense_id: string | null;
+          target_group_id: string | null;
+          status: string;
+          accepted_user_id: string | null;
+          accepted_at: string | null;
+          created_at: string;
+          expires_at: string;
+        };
+        Insert: {
+          id?: string;
+          inviter_id: string;
+          member_id: string;
+          email: string;
+          token?: string;
+          target_expense_id?: string | null;
+          target_group_id?: string | null;
+          status?: string;
+          accepted_user_id?: string | null;
+          accepted_at?: string | null;
+          created_at?: string;
+          expires_at?: string;
+        };
+        Update: {
+          id?: string;
+          inviter_id?: string;
+          member_id?: string;
+          email?: string;
+          token?: string;
+          target_expense_id?: string | null;
+          target_group_id?: string | null;
+          status?: string;
+          accepted_user_id?: string | null;
+          accepted_at?: string | null;
+          created_at?: string;
+          expires_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'invitations_inviter_id_fkey';
+            columns: ['inviter_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'invitations_member_id_fkey';
+            columns: ['member_id'];
+            referencedRelation: 'members';
             referencedColumns: ['id'];
           },
         ];
@@ -345,6 +418,44 @@ export interface Database {
           },
         ];
       };
+      // Migration 0012 — owner-minted, revocable read-only share links per member.
+      member_share_tokens: {
+        Row: {
+          token: string;
+          member_id: string;
+          owner_id: string;
+          revoked_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          token?: string;
+          member_id: string;
+          owner_id: string;
+          revoked_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          token?: string;
+          member_id?: string;
+          owner_id?: string;
+          revoked_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'member_share_tokens_member_id_fkey';
+            columns: ['member_id'];
+            referencedRelation: 'members';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'member_share_tokens_owner_id_fkey';
+            columns: ['owner_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -389,6 +500,45 @@ export interface Database {
           p_splits: Array<{ member_id: string; share_cents: number }>;
         };
         Returns: Database['public']['Tables']['expenses']['Row'];
+      };
+      // Migration 0012 — public, read-only balance for a share token: that member's
+      // per-currency net versus the owner. No rows for an invalid/revoked token.
+      member_ledger_by_token: {
+        Args: { p_token: string };
+        Returns: {
+          member_name: string;
+          owner_name: string;
+          currency: string | null;
+          net_cents: number;
+        }[];
+      };
+      // Migration 0014 — public, display-only fields for one invite token. No rows
+      // for an unknown token.
+      invite_details: {
+        Args: { p_token: string };
+        Returns: {
+          email: string;
+          inviter_name: string;
+          member_name: string;
+          status: string;
+        }[];
+      };
+      // Migration 0014 — authenticated accept: claims the member row and returns
+      // the route to land on, or null when the invite can't be accepted.
+      accept_invite: {
+        Args: { p_token: string };
+        Returns: string | null;
+      };
+      // Migration 0015 — RLS helpers for cross-user read visibility. Not called
+      // from app code (used inside the shared SELECT policies); typed for
+      // completeness.
+      can_see_expense: {
+        Args: { p_expense_id: string };
+        Returns: boolean;
+      };
+      can_see_member: {
+        Args: { p_member_id: string };
+        Returns: boolean;
       };
     };
     Enums: {

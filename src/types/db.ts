@@ -33,6 +33,8 @@ export type GroupMember = Tables<'group_members'>;
 export type Expense = Tables<'expenses'>;
 export type ExpenseSplit = Tables<'expense_splits'>;
 export type Settlement = Tables<'settlements'>;
+/** Migration 0014 — an email invite to register and claim a member row. */
+export type Invitation = Tables<'invitations'>;
 
 /** Phase 2 — enum aliases. */
 export type GroupType = Enums<'group_type'>;

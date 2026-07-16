@@ -3,7 +3,8 @@
 import { revalidatePath } from 'next/cache';
 
 import { ROUTES } from '@/constants/routes';
-import { computeSplit } from '@/lib/splits';
+import { safeCurrency } from '@/constants/currencies';
+import { computeSplit, recomputeEqualAfterRemoval } from '@/lib/splits';
 import { createClient } from '@/lib/supabase/server';
 import { firstError } from '@/schemas/auth.schema';
 import {
@@ -13,7 +14,6 @@ import {
   type CreateExpenseInput,
   type UpdateExpenseFormInput,
 } from '@/schemas/expense.schema';
-import { DEFAULT_CURRENCY } from '@/constants/app';
 import type { ActionResult } from '@/types';
 import type { Expense } from '@/types/db';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -34,6 +34,23 @@ import type { Database } from '@/types/database.types';
 type Client = SupabaseClient<Database>;
 
 const GENERIC_ERROR = 'Something went wrong. Please try again.';
+
+/**
+ * The account's currency, from the owner's profile. Single-currency-per-account:
+ * every amount the owner records is stored in this currency (the same one the UI
+ * displays in), rather than a hardcoded default.
+ */
+async function getOwnerCurrency(
+  supabase: Client,
+  ownerId: string,
+): Promise<string> {
+  const { data } = await supabase
+    .from('profiles')
+    .select('preferred_currency')
+    .eq('id', ownerId)
+    .single();
+  return safeCurrency(data?.preferred_currency);
+}
 
 /** All of the owner's member ids. */
 async function getOwnerMemberIds(
@@ -135,6 +152,8 @@ function revalidateExpensePaths(groupId: string | null, expenseId?: string) {
   if (groupId) {
     revalidatePath(`/groups/${groupId}`);
     revalidatePath(`/groups/${groupId}/expenses`);
+    revalidatePath(`/groups/${groupId}/members`);
+    revalidatePath(`/groups/${groupId}/balances`);
   }
 }
 
@@ -156,12 +175,14 @@ export async function createExpense(
   const resolved = await resolveSplitRows(supabase, user.id, parsed.data);
   if (!resolved.ok) return resolved;
 
+  const currency = await getOwnerCurrency(supabase, user.id);
+
   const { data, error } = await supabase.rpc('create_expense_with_splits', {
     p_group_id: parsed.data.groupId,
     p_title: parsed.data.title,
     p_description: parsed.data.description,
     p_amount_cents: parsed.data.amountCents,
-    p_currency: DEFAULT_CURRENCY,
+    p_currency: currency,
     p_category_id: parsed.data.categoryId,
     p_expense_date: parsed.data.expenseDate,
     p_paid_by: parsed.data.paidBy,
@@ -195,13 +216,15 @@ export async function updateExpense(
   const resolved = await resolveSplitRows(supabase, user.id, parsed.data);
   if (!resolved.ok) return resolved;
 
+  const currency = await getOwnerCurrency(supabase, user.id);
+
   const { data, error } = await supabase.rpc('update_expense_with_splits', {
     p_expense_id: parsed.data.expenseId,
     p_group_id: parsed.data.groupId,
     p_title: parsed.data.title,
     p_description: parsed.data.description,
     p_amount_cents: parsed.data.amountCents,
-    p_currency: DEFAULT_CURRENCY,
+    p_currency: currency,
     p_category_id: parsed.data.categoryId,
     p_expense_date: parsed.data.expenseDate,
     p_paid_by: parsed.data.paidBy,
@@ -215,6 +238,81 @@ export async function updateExpense(
   const expense = data as Expense;
   revalidateExpensePaths(parsed.data.groupId, expense.id);
   return { ok: true, data: expense };
+}
+
+/**
+ * Remove one participant from an expense and recompute the equal split across
+ * everyone who remains. Reuses the atomic `update_expense_with_splits` RPC
+ * (migration 0010) rather than a bespoke delete: it re-writes the whole split
+ * set in one call and re-verifies ownership of every id, so no new migration is
+ * needed. The expense's other fields (including its manual settled flag) are
+ * preserved unchanged — the RPC only touches the columns it's given.
+ *
+ * Guards live in {@link recomputeEqualAfterRemoval}: the payer can't be removed
+ * (they can't owe themselves) and at least two participants must remain.
+ */
+export async function removeExpenseMember(input: {
+  expenseId?: unknown;
+  memberId?: unknown;
+}): Promise<ActionResult> {
+  const expenseId =
+    typeof input?.expenseId === 'string' ? input.expenseId.trim() : '';
+  const memberId =
+    typeof input?.memberId === 'string' ? input.memberId.trim() : '';
+  if (!expenseId) return { ok: false, error: 'Missing expense.' };
+  if (!memberId) return { ok: false, error: 'Missing member.' };
+
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'You must be signed in.' };
+
+  // Load the expense (owner-scoped by RLS) and its current split members.
+  const [{ data: expense }, { data: splitRows }] = await Promise.all([
+    supabase
+      .from('expenses')
+      .select('*')
+      .eq('id', expenseId)
+      .single<Expense>(),
+    supabase
+      .from('expense_splits')
+      .select('member_id')
+      .eq('expense_id', expenseId),
+  ]);
+  if (!expense) return { ok: false, error: 'Expense not found.' };
+
+  const memberIds = (splitRows ?? []).map((row) => row.member_id);
+  const recomputed = recomputeEqualAfterRemoval({
+    amountCents: expense.amount_cents,
+    memberIds,
+    removeId: memberId,
+    payerId: expense.paid_by,
+  });
+  if (!recomputed.ok) return { ok: false, error: recomputed.error };
+
+  // Re-write the split set atomically, preserving every other expense field.
+  const { error } = await supabase.rpc('update_expense_with_splits', {
+    p_expense_id: expense.id,
+    p_group_id: expense.group_id,
+    p_title: expense.title,
+    p_description: expense.description,
+    p_amount_cents: expense.amount_cents,
+    p_currency: expense.currency,
+    p_category_id: expense.category_id,
+    p_expense_date: expense.expense_date,
+    p_paid_by: expense.paid_by,
+    p_notes: expense.notes,
+    p_split_type: 'equal',
+    p_splits: recomputed.shares.map((share) => ({
+      member_id: share.userId,
+      share_cents: share.shareCents,
+    })),
+  });
+  if (error) return { ok: false, error: GENERIC_ERROR };
+
+  revalidateExpensePaths(expense.group_id, expense.id);
+  return { ok: true, data: undefined };
 }
 
 /**

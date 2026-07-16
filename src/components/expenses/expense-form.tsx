@@ -7,10 +7,11 @@ import { useRouter } from 'next/navigation';
 import { Check, Plus, UserPlus, X } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { addMember } from '@/actions/members';
 import { createExpense, updateExpense } from '@/actions/expenses';
 import { AutoDateTime } from '@/components/expenses/auto-datetime';
 import { CategorySelect } from '@/components/expenses/category-select';
+import { InviteByEmailDialog } from '@/components/members/invite-dialog';
+import { PersonSearch } from '@/components/members/person-search';
 import { useCurrency } from '@/components/providers/currency-provider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,12 +26,14 @@ import type { Category } from '@/types/db';
 import { cn } from '@/utils/cn';
 import { toISODate } from '@/utils/date';
 import { parseAmountToCents } from '@/utils/money';
+import type { Person } from '@/utils/people';
 
 /** A member available to pay or share within the chosen scope. */
 export interface ScopeMember {
   id: string;
   name: string;
   isSelf: boolean;
+  email: string | null;
 }
 
 /** A scope the expense can belong to: general (`id: null`) or a group. */
@@ -69,6 +72,10 @@ interface ExpenseFormProps {
   selfMemberId: string | null;
   /** ISO `yyyy-mm-dd` default for the date field (create). */
   defaultDate: string;
+  /** Pre-selected group scope on create (from `?group=`); ignored in edit. */
+  defaultGroupId?: string | null;
+  /** Current owner's id, used to tag the invite link with a referral hint. */
+  userId?: string;
   initial?: ExpenseFormInitial;
 }
 
@@ -89,15 +96,26 @@ export function ExpenseForm({
   scopes,
   selfMemberId,
   defaultDate,
+  defaultGroupId,
+  userId,
   initial,
 }: ExpenseFormProps) {
   const router = useRouter();
   const [errors, setErrors] = React.useState<FieldErrors>({});
   const [isPending, startTransition] = React.useTransition();
 
-  // Everyone the expense can involve. Seeded from the (single) scope's members
-  // and grown as people are added inline.
-  const seed = scopes[0]?.members ?? [];
+  // Which scope (general or a group) the expense belongs to. Edit uses the saved
+  // group; create can be pre-pointed at a group via `?group=`. The scope decides
+  // both the expense's group_id and who can pay / share.
+  const initialScopeId = initial ? initial.groupId : (defaultGroupId ?? null);
+  const [scopeId, setScopeId] = React.useState<string | null>(initialScopeId);
+  const initialScope =
+    scopes.find((s) => s.id === initialScopeId) ?? scopes[0];
+  const isGeneral = scopeId === null;
+
+  // Everyone the expense can involve — the current scope's members, grown as
+  // people are added inline (general scope only).
+  const seed = initialScope?.members ?? [];
   const [roster, setRoster] = React.useState<ScopeMember[]>(seed);
 
   const [title, setTitle] = React.useState(initial?.title ?? '');
@@ -122,10 +140,15 @@ export function ExpenseForm({
     return new Set(seed.map((m) => m.id));
   });
 
-  // Inline "add person" state.
+  // Whether the inline person search is open.
   const [adding, setAdding] = React.useState(false);
-  const [newName, setNewName] = React.useState('');
-  const [addPending, setAddPending] = React.useState(false);
+
+  // The person just added to the split we're offering to make a friend, plus
+  // whether the invite dialog is open. Cleared when dismissed.
+  const [friendPrompt, setFriendPrompt] = React.useState<ScopeMember | null>(
+    null,
+  );
+  const [friendDialogOpen, setFriendDialogOpen] = React.useState(false);
 
   const { format, symbol } = useCurrency();
 
@@ -154,35 +177,49 @@ export function ExpenseForm({
     });
   }
 
-  function onAddPerson() {
-    const name = newName.trim();
-    if (!name) return;
-    setAddPending(true);
-    startTransition(async () => {
-      const result = await addMember({ name });
-      setAddPending(false);
-      if (!result.ok) {
-        toast.error(result.error);
-        return;
+  // Switch scope: swap the roster to the new scope's members, select them all,
+  // and keep the payer only if they're still available.
+  function changeScope(value: string) {
+    const id = value === '' ? null : value;
+    const scope = scopes.find((s) => s.id === id) ?? scopes[0];
+    const scopeMembers = scope?.members ?? [];
+    setScopeId(id);
+    setRoster(scopeMembers);
+    setSelected(new Set(scopeMembers.map((m) => m.id)));
+    setPayer((prev) => {
+      if (scopeMembers.some((m) => m.id === prev)) return prev;
+      if (selfMemberId && scopeMembers.some((m) => m.id === selfMemberId)) {
+        return selfMemberId;
       }
-      const member: ScopeMember = {
-        id: result.data.id,
-        name: result.data.name,
-        isSelf: result.data.is_self,
-      };
-      setRoster((prev) => [...prev, member]);
-      setSelected((prev) => new Set(prev).add(member.id));
-      setNewName('');
-      setAdding(false);
-      toast.success(`Added ${member.name}.`);
+      return scopeMembers[0]?.id ?? '';
     });
+    setAdding(false);
+  }
+
+  // Add a person to the split — whether picked from the search results or just
+  // created. New people also join the roster; everyone gets selected. Deduped by
+  // id, so re-adding someone already present is a no-op beyond selecting them.
+  function addToSplit(person: Person) {
+    const member: ScopeMember = {
+      id: person.id,
+      name: person.name,
+      isSelf: person.isSelf ?? false,
+      email: person.email,
+    };
+    setRoster((prev) =>
+      prev.some((m) => m.id === member.id) ? prev : [...prev, member],
+    );
+    setSelected((prev) => new Set(prev).add(member.id));
+    // Offer to also make this person a friend (an email invite that links their
+    // account). Not for yourself — you're already the account.
+    if (!member.isSelf) setFriendPrompt(member);
   }
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const payload: CreateExpenseFormInput = {
-      groupId: null,
+      groupId: scopeId,
       title,
       description: null,
       amountCents,
@@ -238,6 +275,24 @@ export function ExpenseForm({
 
   return (
     <form onSubmit={onSubmit} className="space-y-5" noValidate>
+      {scopes.length > 1 ? (
+        <div className="space-y-2">
+          <Label htmlFor="expense-scope">Group</Label>
+          <Select
+            id="expense-scope"
+            value={scopeId ?? ''}
+            onChange={(event) => changeScope(event.target.value)}
+            disabled={isPending}
+          >
+            {scopes.map((scope) => (
+              <option key={scope.id ?? 'general'} value={scope.id ?? ''}>
+                {scope.label}
+              </option>
+            ))}
+          </Select>
+        </div>
+      ) : null}
+
       <div className="space-y-2">
         <Label htmlFor="expense-amount">Amount</Label>
         <div
@@ -302,7 +357,7 @@ export function ExpenseForm({
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label htmlFor="expense-payer">Paid by</Label>
-          {!adding ? (
+          {isGeneral && !adding ? (
             <button
               type="button"
               onClick={() => setAdding(true)}
@@ -315,49 +370,64 @@ export function ExpenseForm({
           ) : null}
         </div>
 
-        {adding ? (
-          <div className="flex items-center gap-2">
-            <Input
-              value={newName}
-              onChange={(event) => setNewName(event.target.value)}
-              placeholder="Name of person to split with"
-              disabled={addPending}
-              autoFocus
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  onAddPerson();
-                }
-                if (event.key === 'Escape') {
-                  setAdding(false);
-                  setNewName('');
-                }
-              }}
-            />
-            <Button
-              type="button"
-              size="icon"
-              variant="gradient"
-              aria-label="Save person"
-              onClick={onAddPerson}
-              disabled={addPending || !newName.trim()}
-            >
-              <UserPlus />
-            </Button>
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              aria-label="Cancel"
-              onClick={() => {
-                setAdding(false);
-                setNewName('');
-              }}
-              disabled={addPending}
-            >
-              <X />
-            </Button>
+        {isGeneral && adding ? (
+          <PersonSearch
+            people={roster}
+            selectedIds={participantIds}
+            onAdd={addToSplit}
+            inviteRef={userId}
+            onClose={() => setAdding(false)}
+            disabled={isPending}
+            autoFocus
+            suppressInvitePrompt
+          />
+        ) : null}
+
+        {/* After adding someone, offer to also add them to your friends. */}
+        {friendPrompt ? (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/20 bg-primary/[0.04] px-3 py-2">
+            <span className="min-w-0 text-xs text-muted-foreground">
+              Add{' '}
+              <span className="font-medium text-foreground">
+                {friendPrompt.name}
+              </span>{' '}
+              to your friends? Invite them so they can see the split and settle
+              up.
+            </span>
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setFriendDialogOpen(true)}
+                disabled={isPending}
+                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary outline-none transition-colors hover:bg-primary/20 focus-visible:ring-2 focus-visible:ring-ring [&_svg]:h-3.5 [&_svg]:w-3.5"
+              >
+                <UserPlus />
+                Add friend
+              </button>
+              <button
+                type="button"
+                onClick={() => setFriendPrompt(null)}
+                aria-label="Dismiss"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&_svg]:h-3.5 [&_svg]:w-3.5"
+              >
+                <X />
+              </button>
+            </div>
           </div>
+        ) : null}
+
+        {friendPrompt ? (
+          <InviteByEmailDialog
+            open={friendDialogOpen}
+            onOpenChange={(open) => {
+              setFriendDialogOpen(open);
+              // Retire the prompt once the dialog is dismissed either way.
+              if (!open) setFriendPrompt(null);
+            }}
+            memberId={friendPrompt.id}
+            memberName={friendPrompt.name}
+            defaultEmail={friendPrompt.email}
+          />
         ) : null}
 
         <Select
@@ -413,7 +483,7 @@ export function ExpenseForm({
                 >
                   <span
                     className={cn(
-                      'inline-flex h-4 w-4 items-center justify-center rounded-full border transition-colors [&_svg]:h-3 [&_svg]:w-3',
+                      'inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors [&_svg]:h-3 [&_svg]:w-3',
                       isOn
                         ? 'border-primary bg-primary text-primary-foreground'
                         : 'border-muted-foreground/50',
@@ -421,7 +491,14 @@ export function ExpenseForm({
                   >
                     {isOn ? <Check /> : null}
                   </span>
-                  {memberLabel(member)}
+                  <span className="flex min-w-0 flex-col items-start leading-tight">
+                    <span className="truncate">{memberLabel(member)}</span>
+                    {!member.isSelf && member.email ? (
+                      <span className="max-w-[12rem] truncate text-[11px] font-normal text-muted-foreground">
+                        {member.email}
+                      </span>
+                    ) : null}
+                  </span>
                 </button>
               );
             })}

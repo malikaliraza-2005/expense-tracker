@@ -7,11 +7,17 @@ export const ROUTES = {
   forgotPassword: '/forgot-password',
   resetPassword: '/reset-password',
   authCallback: '/auth/callback',
+  /** Public invite accept page; append `/<token>`. */
+  invite: '/invite',
 
   // Protected (app) routes
   dashboard: '/dashboard',
   expenses: '/expenses',
   newExpense: '/expenses/new',
+  // Retired in Phase 2 — both redirect to /expenses (see next.config.mjs). Kept
+  // as constants so the redirect sources and any lingering references resolve.
+  members: '/members',
+  groups: '/groups',
   profile: '/profile',
   settings: '/settings',
 } as const;

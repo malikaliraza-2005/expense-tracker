@@ -72,7 +72,7 @@ export default async function ProfilePage() {
           <CardTitle className="text-lg">Invite friends</CardTitle>
         </CardHeader>
         <CardContent>
-          <AppInviteLink userId={profile.id} />
+          <AppInviteLink />
         </CardContent>
       </Card>
     </section>

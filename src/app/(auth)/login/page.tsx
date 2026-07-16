@@ -14,8 +14,19 @@ import { ROUTES } from '@/constants/routes';
 
 export const metadata: Metadata = { title: 'Log in' };
 
+/** A same-origin relative path safe to forward after login, or undefined. */
+function safeNext(value: string | string[] | undefined): string | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw && raw.startsWith('/') && !raw.startsWith('//') ? raw : undefined;
+}
+
 /** Login route (Phase 1). Renders the login form inside the auth shell. */
-export default function LoginPage() {
+export default function LoginPage({
+  searchParams,
+}: {
+  searchParams?: { next?: string | string[] };
+}) {
+  const next = safeNext(searchParams?.next);
   return (
     <div className="space-y-6">
       <div className="space-y-1 text-center">
@@ -31,13 +42,17 @@ export default function LoginPage() {
           <CardDescription>Enter your details to continue.</CardDescription>
         </CardHeader>
         <CardContent>
-          <LoginForm />
+          <LoginForm next={next} />
         </CardContent>
         <CardFooter className="justify-center text-sm text-muted-foreground">
           <span>
             Don&apos;t have an account?{' '}
             <Link
-              href={ROUTES.register}
+              href={
+                next
+                  ? `${ROUTES.register}?next=${encodeURIComponent(next)}`
+                  : ROUTES.register
+              }
               className="font-medium text-primary underline-offset-4 transition-colors hover:underline"
             >
               Create one

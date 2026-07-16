@@ -21,7 +21,7 @@ type FieldErrors = { email?: string; password?: string };
  * Action. Shows inline field errors and a toast on server failure; on success
  * the action redirects to the dashboard.
  */
-export function LoginForm() {
+export function LoginForm({ next }: { next?: string }) {
   const [errors, setErrors] = React.useState<FieldErrors>({});
   const [isPending, startTransition] = React.useTransition();
 
@@ -39,7 +39,7 @@ export function LoginForm() {
     setErrors({});
 
     startTransition(async () => {
-      const result = await signIn(parsed.data);
+      const result = await signIn(parsed.data, next);
       // On success the action redirects; we only reach here on failure.
       if (result && !result.ok) {
         toast.error(result.error);

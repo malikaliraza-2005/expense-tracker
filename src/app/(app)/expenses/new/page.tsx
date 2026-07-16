@@ -9,6 +9,7 @@ import { ExpenseForm } from '@/components/expenses/expense-form';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ROUTES } from '@/constants/routes';
+import { getUser } from '@/lib/auth';
 import { listCategories } from '@/lib/queries/categories';
 import { getExpenseFormData } from '@/lib/queries/expenses';
 import { toISODate } from '@/utils/date';
@@ -20,12 +21,23 @@ export const metadata: Metadata = { title: 'New expense' };
  * and categories, then renders the shared expense form. New people can be added
  * inline from the form itself.
  */
-export default async function NewExpensePage() {
-  const [formData, categories] = await Promise.all([
+export default async function NewExpensePage({
+  searchParams,
+}: {
+  searchParams: { group?: string };
+}) {
+  const [formData, categories, user] = await Promise.all([
     getExpenseFormData(),
     listCategories(),
+    getUser(),
   ]);
   if (!formData) notFound();
+
+  // A `?group=` that matches a real scope pre-points the form at that group.
+  const groupParam = searchParams.group?.trim();
+  const defaultGroupId = formData.scopes.some((scope) => scope.id === groupParam)
+    ? groupParam ?? null
+    : null;
 
   return (
     <section className="mx-auto max-w-xl space-y-6">
@@ -49,6 +61,8 @@ export default async function NewExpensePage() {
             scopes={formData.scopes}
             selfMemberId={formData.selfMemberId}
             defaultDate={toISODate(new Date())}
+            defaultGroupId={defaultGroupId}
+            userId={user?.id}
           />
         </CardContent>
       </Card>

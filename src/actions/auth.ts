@@ -32,6 +32,18 @@ const GENERIC_AUTH_ERROR =
   'We could not complete that request. Please check your details and try again.';
 
 /**
+ * A same-origin relative path safe to redirect to after auth, or null. Rejects
+ * absolute and protocol-relative ("//host") URLs so a `next` deep link (e.g.
+ * `/invite/<token>`) can never become an open redirect. Mirrors the guard in the
+ * auth callback route and middleware.
+ */
+function safeNext(value?: string | null): string | null {
+  return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//')
+    ? value
+    : null;
+}
+
+/**
  * Shown when a sign-up targets an address that already has an account. This is
  * a deliberate, product-requested tradeoff: it reveals that the email is
  * registered (mild account-enumeration exposure) in exchange for a clearer
@@ -62,6 +74,7 @@ function isAlreadyRegistered(error: { code?: string; message?: string }): boolea
  */
 export async function signUp(
   input: Partial<SignUpInput>,
+  next?: string,
 ): Promise<ActionResult<{ needsConfirmation: boolean }>> {
   const parsed = validateSignUp(input);
   if (!parsed.success) {
@@ -69,15 +82,23 @@ export async function signUp(
   }
 
   const { email, password, fullName } = parsed.data;
+  const destination = safeNext(next);
   const supabase = createClient();
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? '';
+
+  // Thread the deep link through email confirmation: the callback route already
+  // honors a same-origin `?next=`, so a confirmed invitee lands back on accept.
+  const callback = siteUrl
+    ? `${siteUrl}${ROUTES.authCallback}` +
+      (destination ? `?next=${encodeURIComponent(destination)}` : '')
+    : undefined;
 
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
       data: { full_name: fullName },
-      emailRedirectTo: siteUrl ? `${siteUrl}${ROUTES.authCallback}` : undefined,
+      emailRedirectTo: callback,
     },
   });
 
@@ -102,11 +123,14 @@ export async function signUp(
   }
 
   revalidatePath('/', 'layout');
-  redirect(ROUTES.dashboard);
+  redirect(destination ?? ROUTES.dashboard);
 }
 
 /** Sign in with email + password. Sets the httpOnly session cookie. */
-export async function signIn(input: Partial<SignInInput>): Promise<ActionResult> {
+export async function signIn(
+  input: Partial<SignInInput>,
+  next?: string,
+): Promise<ActionResult> {
   const parsed = validateSignIn(input);
   if (!parsed.success) {
     return { ok: false, error: firstError(parsed.errors) ?? GENERIC_AUTH_ERROR };
@@ -121,7 +145,7 @@ export async function signIn(input: Partial<SignInInput>): Promise<ActionResult>
   }
 
   revalidatePath('/', 'layout');
-  redirect(ROUTES.dashboard);
+  redirect(safeNext(next) ?? ROUTES.dashboard);
 }
 
 /**

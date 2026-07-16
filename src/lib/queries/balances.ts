@@ -6,11 +6,13 @@ import {
   computeLedger,
   groupBalances,
   groupLedger,
+  groupMemberStats,
   overallSummary,
   type BalanceRows,
   type BalanceSummary,
   type CounterpartyBalance,
   type DirectedDebt,
+  type MemberStat,
 } from '@/lib/balances';
 import { getUser } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
@@ -93,6 +95,15 @@ export async function getGroupLedgerDebts(
   const { me, rows } = await getBalanceContext();
   if (!me) return [];
   return groupLedger(groupId, rows);
+}
+
+/** Per-member paid / share / net figures within a single group. */
+export async function getGroupMemberStats(
+  groupId: string,
+): Promise<MemberStat[]> {
+  const { me, rows } = await getBalanceContext();
+  if (!me) return [];
+  return groupMemberStats(groupId, rows);
 }
 
 /** The full who-owes-whom ledger across all of the owner's activity. */

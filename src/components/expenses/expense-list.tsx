@@ -15,9 +15,10 @@ import { cn } from '@/utils/cn';
  */
 export function ExpenseList({
   expenses,
+  currentUserId,
 }: {
   expenses: ExpenseListItem[];
-  /** Accepted for call-site compatibility; the "You" label uses `is_self`. */
+  /** The viewing user's id; used to label the payer "You" from the reader's view. */
   currentUserId?: string;
 }) {
   return (
@@ -25,7 +26,13 @@ export function ExpenseList({
       {expenses.map(({ expense, category, payer, participantCount }) => {
         const Icon = categoryIcon(category.icon);
         const color = colorForKey(category.icon || category.name);
-        const payerName = payer.is_self ? 'You' : payer.name;
+        // "You" is the reader's own member: their claimed member (linked_user_id),
+        // or their self-member on an expense they own. On a shared expense the
+        // owner's self-member is NOT the reader, so it must not read as "You".
+        const payerIsMe =
+          (currentUserId != null && payer.linked_user_id === currentUserId) ||
+          (expense.owner_id === currentUserId && payer.is_self);
+        const payerName = payerIsMe ? 'You' : payer.name;
         const settled = Boolean(expense.settled_at);
         return (
           <li key={expense.id}>

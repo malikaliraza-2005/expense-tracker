@@ -12,8 +12,10 @@ export interface NavItem {
 
 /**
  * Primary navigation shown in the mobile bottom bar and the desktop top bar.
- * The app is expense-first: two focused destinations flank the central "Add"
- * action; the account entries live in the avatar menu.
+ * The app is expense-first: Home and Expenses flank the central "Add" action;
+ * the account entries live in the avatar menu. (People and Groups were retired —
+ * their functions now live on Expense Detail; Friends/Requests/Chat arrive in
+ * later phases.)
  */
 export const PRIMARY_NAV: NavItem[] = [
   { href: ROUTES.dashboard, label: 'Home', icon: LayoutDashboard },
