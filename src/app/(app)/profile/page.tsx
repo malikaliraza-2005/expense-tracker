@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 
 import { Logo } from '@/components/common/logo';
 import { PageHeader } from '@/components/common/page-header';
+import { AppInviteLink } from '@/components/profile/app-invite-link';
 import { AvatarUploader } from '@/components/profile/avatar-uploader';
 import { ProfileForm } from '@/components/profile/profile-form';
 import { CurrencySelect } from '@/components/settings/currency-select';
@@ -63,6 +64,15 @@ export default async function ProfilePage() {
               chosen currency.
             </p>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Invite friends</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <AppInviteLink userId={profile.id} />
         </CardContent>
       </Card>
     </section>
