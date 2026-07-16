@@ -3,9 +3,11 @@
 **Goal:** Delete the two redundant destinations (People, Groups) without breaking the
 expense flows that reuse their components.
 
-**Status:** Not started. **Do Phase 3's settle-up move first (or in the same change)**
-so settlement recording is never absent when the People page — its only current home
-— is removed.
+**Status:** Done — verified. Phase 3's settle-up relocation shipped first (settle-up
+now lives on Expense Detail), so settlement recording was never absent. Removal done
+in commit `db5724d` (files) on top of checkpoint `d16bbe8` (nav/redirects/revalidate/
+scope-picker edits). `tsc`, `next lint`, `next build`, and `vitest` (34/34) all green;
+`/members`, `/groups`, and `/groups/:path*` confirmed returning 307 → `/expenses`.
 
 ---
 
@@ -88,8 +90,8 @@ the `group_id` columns remain for historical data and optional future use.
 
 ## Done when
 
-- [ ] People + Groups pages and groups-only components/actions/queries deleted.
-- [ ] All shared expense-flow components still present and working.
-- [ ] Nav, dashboard, revalidations, and route redirects updated; no broken links.
-- [ ] Expense form no longer shows the group scope picker.
-- [ ] Build + lint clean; `/members` and `/groups` redirect to `/expenses`.
+- [x] People + Groups pages and groups-only components/actions/queries deleted.
+- [x] All shared expense-flow components still present and working.
+- [x] Nav, dashboard, revalidations, and route redirects updated; no broken links.
+- [x] Expense form no longer shows the group scope picker.
+- [x] Build + lint clean; `/members` and `/groups` redirect to `/expenses`.

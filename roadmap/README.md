@@ -12,7 +12,7 @@ while fixing the invite/email/login bugs and removing redundant pages.
 | Phase | File | Goal | Status |
 |-------|------|------|--------|
 | 1 | [phase-1-invite-fixes.md](phase-1-invite-fixes.md) | Real email invites, invite landing, no post-login 404 | **Done — pending E2E verification** |
-| 2 | [phase-2-remove-people-groups.md](phase-2-remove-people-groups.md) | Remove People + Groups pages safely | Not started |
+| 2 | [phase-2-remove-people-groups.md](phase-2-remove-people-groups.md) | Remove People + Groups pages safely | **Done — verified (build + redirects)** |
 | 3 | [phase-3-expense-detail.md](phase-3-expense-detail.md) | Per-member owe/paid/remaining, remove buttons, settle-up, "add to friends?" | **Code complete — pending E2E verification** |
 | 4 | [phase-4-friends.md](phase-4-friends.md) | Friends page: add by email/link, in-app request or email invite | Not started |
 | 5 | [phase-5-requests.md](phase-5-requests.md) | Requests page: Sent/Received/Accepted/Rejected/Clarifications | Not started |
