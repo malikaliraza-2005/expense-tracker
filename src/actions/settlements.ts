@@ -131,6 +131,8 @@ export async function recordSettlement(
       currency,
       groupId,
       contextLabel,
+      // Lets a non-group settlement deep-link to the expenses with this person.
+      memberId: counterparty?.id ?? null,
     },
   ];
   for (const party of [payer, receiver]) {
@@ -251,6 +253,9 @@ export async function settleWithMember(input: {
       groupId,
       contextLabel,
       settlementId,
+      // Only meaningful in my own ledger — it's my member id. When I'm the
+      // participant settling in someone else's ledger, the id wouldn't resolve for me.
+      memberId: callerIsOwner ? member.id : null,
     },
   ];
   if (counterpartyAccount) {
@@ -262,6 +267,8 @@ export async function settleWithMember(input: {
       groupId,
       contextLabel,
       settlementId,
+      // Conversely: in the owner's ledger, this member is the settling participant.
+      memberId: callerIsOwner ? null : member.id,
     });
   }
   await logActivity(supabase, events);

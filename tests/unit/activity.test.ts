@@ -186,9 +186,26 @@ describe('activityHref', () => {
     ).toBe('/groups/g9');
   });
 
-  it('falls back to Friends for a settlement/friend event with no entity', () => {
+  it('sends a non-group settlement to the expenses with that person', () => {
+    // Not tied to an expense or group — the reader still lands on the thing it's
+    // about, rather than a bare Friends list they'd have to search.
     expect(
-      activityHref(ev({ type: 'settlement_recorded', expenseId: null, groupId: null })),
+      activityHref(
+        ev({ type: 'settlement_recorded', expenseId: null, groupId: null, memberId: 'm9' }),
+      ),
+    ).toBe('/expenses?who=m9');
+    expect(
+      activityHref(
+        ev({ type: 'settlement_received', expenseId: null, groupId: null, memberId: 'm9' }),
+      ),
+    ).toBe('/expenses?who=m9');
+  });
+
+  it('falls back to Friends only when there is nothing to point at', () => {
+    expect(
+      activityHref(
+        ev({ type: 'settlement_recorded', expenseId: null, groupId: null, memberId: null }),
+      ),
     ).toBe('/friends');
     expect(
       activityHref(ev({ type: 'friend_added', expenseId: null, groupId: null })),

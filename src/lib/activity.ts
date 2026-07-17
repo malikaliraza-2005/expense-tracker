@@ -97,9 +97,14 @@ export function unreadCount(items: ActivityItem[]): number {
  *
  *   - expense events    → that expense
  *   - group events      → that group
- *   - settlements       → the expense it settled, else the group, else Friends
+ *   - settlements       → the expense it settled, else the group it was in, else the
+ *                         non-group expenses with that person
  *   - friend events     → Friends
- *   - request events    → Requests
+ *
+ * A settlement is the subtle one: it may be scoped to an expense, to a group, or to
+ * neither (an overall balance with one person). In that last case the thing it's
+ * "about" is the non-group expenses shared with them, which `/expenses?who=` shows —
+ * landing on the bare Friends list would make the reader hunt for it.
  *
  * Derived from the ids already on the row rather than a stored link, so it can't go
  * stale if routes change. Returns null when the target no longer exists (the entity
@@ -112,8 +117,10 @@ export function activityHref(item: ActivityItem): string | null {
 
   switch (activityCategory(item.type)) {
     case 'settlement':
-      // No expense/group context left — the balance lives on Friends.
-      return ROUTES.friends;
+      // Not tied to an expense or group: show the non-group expenses with them.
+      return item.memberId
+        ? `${ROUTES.expenses}?who=${item.memberId}`
+        : ROUTES.friends;
     case 'friend':
       return ROUTES.friends;
     case 'group':
