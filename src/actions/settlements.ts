@@ -279,7 +279,17 @@ export async function settleWithMember(input: {
   return { ok: true, data: undefined };
 }
 
-/** Delete a recorded settlement, restoring the balance it had cleared. */
+/**
+ * Delete a recorded settlement, restoring the balance it had cleared. Callable by
+ * either party — whoever recorded it can undo it — via the `unsettle_member` RPC,
+ * which mirrors `settle_member`'s authorization.
+ *
+ * It goes through the RPC rather than a direct DELETE for a reason: settlements are
+ * owner-scoped for writes, so a participant's DELETE silently matches zero rows and
+ * RLS reports that as success, not an error. This used to tell the user their payment
+ * was removed while it was still there. The RPC returns whether a row actually went,
+ * and a no-op is now surfaced as a failure instead of being swallowed.
+ */
 export async function deleteSettlement(input: {
   settlementId?: unknown;
 }): Promise<ActionResult> {
@@ -293,13 +303,16 @@ export async function deleteSettlement(input: {
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'You must be signed in.' };
 
-  const { error } = await supabase
-    .from('settlements')
-    .delete()
-    .eq('id', settlementId);
+  const { data: removed, error } = await supabase.rpc('unsettle_member', {
+    p_settlement_id: settlementId,
+  });
   if (error) return { ok: false, error: GENERIC_ERROR };
+  if (!removed) {
+    return { ok: false, error: 'That payment couldn’t be removed.' };
+  }
 
-  revalidatePath(ROUTES.dashboard);
-  revalidatePath(ROUTES.expenses);
+  // Balances derive from settlements, so a removal moves figures app-wide; refresh the
+  // whole shell rather than just the two pages this used to touch.
+  revalidatePath('/', 'layout');
   return { ok: true, data: undefined };
 }

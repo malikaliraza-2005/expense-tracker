@@ -678,6 +678,12 @@ export interface Database {
         Args: { p_events: Json };
         Returns: number;
       };
+      // Migration 0026 — remove a settlement as either the ledger owner or the account
+      // a party member represents. True when a row was actually deleted.
+      unsettle_member: {
+        Args: { p_settlement_id: string };
+        Returns: boolean;
+      };
       // Migration 0025 — notify an expense thread's other participants of a new chat
       // message (one batched entry per reader). Returns rows touched.
       log_chat_activity: {
