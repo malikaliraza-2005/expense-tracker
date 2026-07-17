@@ -18,20 +18,29 @@ import { cn } from '@/utils/cn';
  * always belong to their own group. Balance and Settle up are owner-centric — the
  * figure the owner can actually clear — so the owner's card shows only its
  * contribution. Server-rendered; the interactive controls are client leaves.
+ *
+ * `canManage` is false for a participant viewing a group shared with them: Remove is an
+ * owner-scoped write (a no-op for them that the database calls success), and Settle up
+ * here clears the OWNER's balance from their own ledger. A participant settles from
+ * Activity's outstanding balances instead, which routes through `settleWithMember`.
  */
 export function GroupMembers({
   groupId,
   selfMemberId,
   members,
+  canManage = true,
 }: {
   groupId: string;
   selfMemberId: string | null;
   members: GroupMemberStatDto[];
+  canManage?: boolean;
 }) {
   if (members.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        No members yet. Add people above to start splitting.
+        {canManage
+          ? 'No members yet. Add people above to start splitting.'
+          : 'No members yet.'}
       </p>
     );
   }
@@ -41,7 +50,7 @@ export function GroupMembers({
       {members.map((entry) => {
         const { member, isSelf, paidCents, owesCents, ownerNetCents } = entry;
         const name = isSelf ? 'You' : member.name;
-        const canSettle = !isSelf && ownerNetCents !== 0 && selfMemberId;
+        const canSettle = canManage && !isSelf && ownerNetCents !== 0 && selfMemberId;
 
         return (
           <li
@@ -105,7 +114,7 @@ export function GroupMembers({
                 />
               ) : null}
               {/* The owner is always in their own group — never removable. */}
-              {!isSelf ? (
+              {canManage && !isSelf ? (
                 <RemoveMemberButton
                   groupId={groupId}
                   memberId={member.id}

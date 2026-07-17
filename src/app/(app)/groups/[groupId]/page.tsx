@@ -21,6 +21,9 @@ const RECENT_LIMIT = 5;
  * most recent group expenses. Everything is scoped to `groupId` — the summary
  * comes from the balance engine restricted to the group, and the expense list is
  * filtered by group. Members and the full ledger live on their own tabs.
+ *
+ * Adding an expense is the owner's alone: an expense belongs to the ledger that owns the
+ * group, so a participant's "Add" could only ever write into someone else's group.
  */
 export default async function GroupOverviewPage({
   params,
@@ -35,6 +38,7 @@ export default async function GroupOverviewPage({
   if (!detail) notFound();
 
   const { group, summary } = detail;
+  const isOwner = group.owner_id === user.id;
   const recent = expenses.slice(0, RECENT_LIMIT);
 
   return (
@@ -72,12 +76,14 @@ export default async function GroupOverviewPage({
       <Card>
         <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
           <CardTitle className="text-base">Recent expenses</CardTitle>
-          <Button asChild variant="outline" size="sm">
-            <Link href={`${ROUTES.newExpense}?group=${group.id}`}>
-              <Plus />
-              Add
-            </Link>
-          </Button>
+          {isOwner ? (
+            <Button asChild variant="outline" size="sm">
+              <Link href={`${ROUTES.newExpense}?group=${group.id}`}>
+                <Plus />
+                Add
+              </Link>
+            </Button>
+          ) : null}
         </CardHeader>
         <CardContent>
           {recent.length === 0 ? (

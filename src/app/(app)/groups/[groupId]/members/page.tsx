@@ -14,6 +14,10 @@ export const metadata = { title: 'Group members' };
  * Group Members tab: add or remove people, and see each member's in-group Paid,
  * Owes, and Balance with a Settle up action. Every figure is scoped to this
  * group via {@link getGroupMembersWithStats}.
+ *
+ * Managing the roster is the owner's alone. A participant can open the group (0023) but
+ * the membership writes are owner-scoped, so for them Add/Remove could only ever be a
+ * silent no-op — the roster is shown read-only instead.
  */
 export default async function GroupMembersPage({
   params,
@@ -23,6 +27,7 @@ export default async function GroupMembersPage({
   const user = await requireUser();
   const group = await getGroup(params.groupId);
   if (!group) notFound();
+  const isOwner = group.owner_id === user.id;
 
   const [members, allMembers, selfMemberId] = await Promise.all([
     getGroupMembersWithStats(params.groupId),
@@ -45,19 +50,21 @@ export default async function GroupMembersPage({
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Add people</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <GroupMemberManager
-            groupId={group.id}
-            allMembers={manageable}
-            memberIds={memberIds}
-            inviteRef={user.id}
-          />
-        </CardContent>
-      </Card>
+      {isOwner ? (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Add people</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <GroupMemberManager
+              groupId={group.id}
+              allMembers={manageable}
+              memberIds={memberIds}
+              inviteRef={user.id}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
 
       <section className="space-y-3">
         <h2 className="flex items-center gap-2 text-base font-semibold">
@@ -70,6 +77,7 @@ export default async function GroupMembersPage({
           groupId={group.id}
           selfMemberId={selfMemberId}
           members={members}
+          canManage={isOwner}
         />
       </section>
     </div>

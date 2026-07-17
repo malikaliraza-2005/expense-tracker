@@ -115,6 +115,17 @@ export async function deleteGroup(input: {
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'You must be signed in.' };
 
+  // Only the owner may delete. A participant can read this group (0023) and so can reach
+  // this action, but every write below is owner-scoped and would quietly match zero rows
+  // — leaving us to report a deletion that never happened.
+  const { data: group } = await supabase
+    .from('groups')
+    .select('id')
+    .eq('id', groupId)
+    .eq('owner_id', user.id)
+    .maybeSingle();
+  if (!group) return { ok: false, error: 'Group not found.' };
+
   // Detach activity so it isn't cascade-deleted with the group.
   await supabase
     .from('expenses')
@@ -205,6 +216,11 @@ export async function removeGroupMember(input: {
     supabase.from('groups').select('name').eq('id', groupId).eq('owner_id', user.id).single(),
     supabase.from('members').select('linked_user_id').eq('id', memberId).single(),
   ]);
+  // Not the owner's group — stop here. Since 0023 a participant can READ a group they're
+  // in, so they can reach this action; the delete below is owner-scoped and would match
+  // zero rows, which RLS reports as success rather than an error. Without this guard we'd
+  // tell them the person was removed while nothing had changed.
+  if (!group) return { ok: false, error: 'Group not found.' };
 
   const { error } = await supabase
     .from('group_members')

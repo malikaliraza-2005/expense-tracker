@@ -102,6 +102,12 @@ async function getSelfMemberId(
  * always participates in their own group's expenses (they're usually the payer), even
  * without an explicit `group_members` row. This mirrors the expense form's group scope
  * — which offers "You" — so the form and this server-side guard agree on who's allowed.
+ *
+ * The group must be the caller's OWN. This is not a formality: since 0023 a participant
+ * can read a group they're in, including its roster — so without this check the roster
+ * lookup below would happily hand them the OWNER's members to build an expense from, and
+ * the database permits that write (verified). The result would be an expense in someone
+ * else's group, split against people the author doesn't own and can't be billed by.
  */
 async function allowedMembers(
   supabase: Client,
@@ -109,6 +115,14 @@ async function allowedMembers(
   groupId: string | null,
 ): Promise<{ ok: true; ids: Set<string> } | { ok: false; error: string }> {
   if (groupId) {
+    const { data: group } = await supabase
+      .from('groups')
+      .select('id')
+      .eq('id', groupId)
+      .eq('owner_id', ownerId)
+      .maybeSingle();
+    if (!group) return { ok: false, error: 'Group not found.' };
+
     const ids = await getGroupMemberIds(supabase, groupId);
     if (ids.size === 0) {
       return { ok: false, error: 'That group has no members.' };
@@ -431,12 +445,18 @@ export async function setExpenseSettled(input: {
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'You must be signed in.' };
 
+  // Since 0015 a participant can READ a shared expense, so "found" no longer means
+  // "mine" — check the owner explicitly. The UPDATE is owner-scoped and would match zero
+  // rows for anyone else, which RLS reports as success, not an error.
   const { data: existing } = await supabase
     .from('expenses')
-    .select('group_id')
+    .select('group_id, owner_id')
     .eq('id', expenseId)
     .single();
   if (!existing) return { ok: false, error: 'Expense not found.' };
+  if (existing.owner_id !== user.id) {
+    return { ok: false, error: 'Only the person who added this can change it.' };
+  }
 
   const { error } = await supabase
     .from('expenses')
@@ -465,10 +485,21 @@ export async function deleteExpense(input: {
   // Capture the title + participants BEFORE deleting (splits cascade away) so the
   // activity can name the expense and reach everyone who was on it.
   const [{ data: existing }, { data: splitRows }] = await Promise.all([
-    supabase.from('expenses').select('group_id, title').eq('id', expenseId).single(),
+    supabase
+      .from('expenses')
+      .select('group_id, title, owner_id')
+      .eq('id', expenseId)
+      .single(),
     supabase.from('expense_splits').select('member_id').eq('expense_id', expenseId),
   ]);
   if (!existing) return { ok: false, error: 'Expense not found.' };
+  // A participant can read this expense (0015) but not delete it: the DELETE is
+  // owner-scoped and would match zero rows silently. Guarding here matters twice over —
+  // otherwise we'd report success AND fan out "deleted this expense" to everyone's feed
+  // for an expense that is still there.
+  if (existing.owner_id !== user.id) {
+    return { ok: false, error: 'Only the person who added this can delete it.' };
+  }
   const linked = await getLinkedUserIds(
     supabase,
     (splitRows ?? []).map((row) => row.member_id),
