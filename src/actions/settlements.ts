@@ -82,6 +82,30 @@ export async function recordSettlement(
     }
   }
 
+  // Cap the amount at what is ACTUALLY outstanding between these two, across every
+  // scope — the same rule `settleWithMember` applies, which this action was missing.
+  //
+  // It is not just belt-and-braces. A settlement's group_id is a label: the global net
+  // counts every settlement, but a GROUP net counts only settlements tagged with that
+  // group (`restrictToGroup` in lib/balances.ts). So a payment recorded from Activity or
+  // Friends — which pass no groupId — clears the global debt while the group page still
+  // shows it outstanding, with a Settle-up button next to it. Recording it a second time
+  // used to be accepted and drove the balance PAST zero, telling the payee they now owed
+  // money they had just been paid. Capping against the global net means the second
+  // attempt is refused instead: the debt really is gone, whatever the group lens says.
+  const rows = await getBalanceRows();
+  const outstanding = balanceWith(
+    parsed.data.receiverId,
+    parsed.data.payerId,
+    rows,
+  );
+  if (outstanding <= 0) {
+    return { ok: false, error: 'That balance is already settled.' };
+  }
+  if (parsed.data.amountCents > outstanding) {
+    return { ok: false, error: 'That’s more than the outstanding balance.' };
+  }
+
   // Store the payment in the account's currency (the one every amount displays
   // in), consistent with how expenses are recorded.
   const { data: profile } = await supabase

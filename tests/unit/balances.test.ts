@@ -111,6 +111,40 @@ describe('group scoping', () => {
     expect(groupBalances('me', 'other', grouped)).toEqual([]);
   });
 
+  /**
+   * A settlement's group_id is a LABEL, and the two scopes read it differently: the
+   * global net counts every settlement, a group net only its own. So an untagged
+   * payment settles the debt globally while the group still shows it outstanding.
+   *
+   * This asymmetry is why `recordSettlement` caps against the GLOBAL net: trusting the
+   * group figure would let the same debt be paid twice and drive the balance past zero.
+   * If this ever changes, that cap needs revisiting.
+   */
+  const settledGlobally: BalanceRows = {
+    ...grouped,
+    settlements: [
+      { group_id: null, payer_id: 'me', receiver_id: 'a', amount_cents: 100 },
+    ],
+  };
+
+  it('an untagged settlement clears the global net but NOT the group net', () => {
+    expect(balanceWith('me', 'a', settledGlobally)).toBe(0);
+    expect(groupBalances('me', 'g1', settledGlobally)).toEqual([
+      { memberId: 'a', netCents: -100 },
+    ]);
+  });
+
+  it('a settlement tagged with the group clears both', () => {
+    const settledInGroup: BalanceRows = {
+      ...grouped,
+      settlements: [
+        { group_id: 'g1', payer_id: 'me', receiver_id: 'a', amount_cents: 100 },
+      ],
+    };
+    expect(balanceWith('me', 'a', settledInGroup)).toBe(0);
+    expect(groupBalances('me', 'g1', settledInGroup)).toEqual([]);
+  });
+
   it('groupMemberStats reports paid / owes / net per member', () => {
     const stats = groupMemberStats('g1', grouped);
     expect(stats).toEqual([

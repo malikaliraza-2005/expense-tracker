@@ -79,11 +79,20 @@ export async function revokeShareLink(input: {
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'You must be signed in.' };
 
-  const { error } = await supabase
+  // Scope to the caller's own link and confirm a row actually changed. Without the
+  // owner filter this is the no-op trap: the write policy is owner-scoped, so someone
+  // else's token would match zero rows, which RLS reports as success — leaving us to
+  // announce a revocation that never happened.
+  const { data: revoked, error } = await supabase
     .from('member_share_tokens')
     .update({ revoked_at: new Date().toISOString() })
-    .eq('token', token);
+    .eq('token', token)
+    .eq('owner_id', user.id)
+    .select('token');
   if (error) return { ok: false, error: GENERIC_ERROR };
+  if (!revoked || revoked.length === 0) {
+    return { ok: false, error: 'That link couldn’t be revoked.' };
+  }
 
   revalidatePath(ROUTES.dashboard);
   revalidatePath(ROUTES.expenses);
