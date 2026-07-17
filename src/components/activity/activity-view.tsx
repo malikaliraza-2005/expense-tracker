@@ -3,6 +3,7 @@ import Link from 'next/link';
 import {
   ArrowLeftRight,
   ChevronRight,
+  MessageCircle,
   Receipt,
   Scale,
   UserPlus,
@@ -106,6 +107,7 @@ const ICONS: Record<ActivityCategory, LucideIcon> = {
   group: Users2,
   settlement: ArrowLeftRight,
   friend: UserPlus,
+  chat: MessageCircle,
   balance: Scale,
 };
 
@@ -114,5 +116,6 @@ const ACCENT: Record<ActivityCategory, string> = {
   group: 'bg-sky-500/12 text-sky-500',
   settlement: 'bg-emerald-500/12 text-emerald-500',
   friend: 'bg-violet-500/12 text-violet-500',
+  chat: 'bg-pink-500/12 text-pink-500',
   balance: 'bg-amber-500/12 text-amber-500',
 };

@@ -203,6 +203,46 @@ describe('describeActivity — settlement context', () => {
   });
 });
 
+describe('describeActivity — chat', () => {
+  it('names the thread and its group, and never says "You"', () => {
+    // The sender is never notified, so a chat row is always someone else's doing.
+    expect(
+      describeActivity(
+        ev({
+          type: 'chat_message',
+          actorId: OTHER,
+          actorName: 'Ahmed',
+          subject: 'Cabins',
+          contextLabel: 'Trip to Naran',
+        }),
+        ME,
+      ),
+    ).toBe('Ahmed sent a message on “Cabins” in “Trip to Naran”');
+  });
+
+  it('omits the group for a non-group expense', () => {
+    expect(
+      describeActivity(
+        ev({
+          type: 'chat_message',
+          actorId: OTHER,
+          actorName: 'Ahmed',
+          subject: 'Taxi',
+          contextLabel: null,
+        }),
+        ME,
+      ),
+    ).toBe('Ahmed sent a message on “Taxi”');
+  });
+
+  it('is its own icon family and opens the expense', () => {
+    expect(activityCategory('chat_message')).toBe('chat');
+    expect(activityHref(ev({ type: 'chat_message', expenseId: 'e5' }))).toBe(
+      '/expenses/e5',
+    );
+  });
+});
+
 describe('activityHref', () => {
   it('opens the expense for expense events', () => {
     expect(activityHref(ev({ type: 'expense_added_you', expenseId: 'e9' }))).toBe(

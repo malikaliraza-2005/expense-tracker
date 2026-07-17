@@ -79,5 +79,15 @@ export async function sendExpenseMessage(input: {
   }
   if (!row) return { ok: false, error: GENERIC_ERROR };
 
+  // Tell the thread's other participants there's conversation here — realtime only
+  // reaches someone already looking at this expense. The RPC resolves the recipients,
+  // skips the sender, and keeps it to one entry per thread while unread. Best-effort:
+  // a failed notification must never fail a sent message.
+  try {
+    await supabase.rpc('log_chat_activity', { p_expense_id: expenseId });
+  } catch {
+    // ignored by design
+  }
+
   return { ok: true, data: { message: toChatMessage(row) } };
 }

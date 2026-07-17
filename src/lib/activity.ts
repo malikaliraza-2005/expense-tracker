@@ -13,7 +13,13 @@ import type { ActivityType } from '@/types/db';
 import type { ActivityItem } from '@/types/dto';
 
 /** A coarse category, used to pick an icon / accent on the Activity row. */
-export type ActivityCategory = 'expense' | 'group' | 'settlement' | 'friend' | 'balance';
+export type ActivityCategory =
+  | 'expense'
+  | 'group'
+  | 'settlement'
+  | 'friend'
+  | 'chat'
+  | 'balance';
 
 /** The icon family an activity belongs to. */
 export function activityCategory(type: ActivityType): ActivityCategory {
@@ -21,6 +27,7 @@ export function activityCategory(type: ActivityType): ActivityCategory {
   if (type.startsWith('group_')) return 'group';
   if (type.startsWith('settlement_')) return 'settlement';
   if (type.startsWith('friend_')) return 'friend';
+  if (type.startsWith('chat_')) return 'chat';
   return 'balance';
 }
 
@@ -82,6 +89,10 @@ export function describeActivity(item: ActivityItem, meId: string): string {
       return `${who} settled ${money} with ${subject}${context}`;
     case 'settlement_received':
       return `${actor} settled ${money} with you${context}`;
+    case 'chat_message':
+      // One entry per thread, bumped while unread — so it reads as "there's
+      // conversation here", not as a transcript.
+      return `${actor} sent a message on “${subject}”${context}`;
     case 'friend_added':
       return `${who} added ${subject} as a friend`;
     case 'friend_removed':

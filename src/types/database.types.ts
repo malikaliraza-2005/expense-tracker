@@ -678,6 +678,12 @@ export interface Database {
         Args: { p_events: Json };
         Returns: number;
       };
+      // Migration 0025 — notify an expense thread's other participants of a new chat
+      // message (one batched entry per reader). Returns rows touched.
+      log_chat_activity: {
+        Args: { p_expense_id: string };
+        Returns: number;
+      };
       // Migration 0021 — record ONE settlement against the balance with a member,
       // callable by either the ledger owner or the account that member represents.
       // Returns the settlement id, or null when the caller isn't a party.

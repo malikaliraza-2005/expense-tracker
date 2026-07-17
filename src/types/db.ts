@@ -53,7 +53,9 @@ export type ActivityType =
   | 'settlement_received'
   | 'friend_added'
   | 'friend_removed'
-  | 'balance_changed';
+  | 'balance_changed'
+  /** Someone posted in an expense's chat thread (migration 0025). */
+  | 'chat_message';
 /** Migration 0016 — an invite is either a member email-invite or a friend request. */
 export type InvitationKind = 'member' | 'friend';
 /**
