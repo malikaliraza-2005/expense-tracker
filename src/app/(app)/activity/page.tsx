@@ -9,7 +9,7 @@ import { EmptyState } from '@/components/common/empty-state';
 import { PageHeader } from '@/components/common/page-header';
 import { requireUser } from '@/lib/auth';
 import { getActivity } from '@/lib/queries/activity';
-import { getSelfMemberId } from '@/lib/queries/balances';
+import { getSelfMemberId, getSharedBalances } from '@/lib/queries/balances';
 import { getMembersWithBalances } from '@/lib/queries/members';
 
 export const metadata: Metadata = { title: 'Activity' };
@@ -22,14 +22,16 @@ export const metadata: Metadata = { title: 'Activity' };
  */
 export default async function ActivityPage() {
   const user = await requireUser();
-  const [items, balances, selfMemberId] = await Promise.all([
+  const [items, balances, shared, selfMemberId] = await Promise.all([
     getActivity(),
     getMembersWithBalances(),
+    getSharedBalances(),
     getSelfMemberId(),
   ]);
   const hasUnread = items.some((item) => item.readAt === null);
 
-  // Live balances that can still be cleared — derived, never stored.
+  // Live balances that can still be cleared — derived, never stored. Both my own
+  // ledger and the ones I'm a participant in (someone else's ledger).
   const outstanding = balances.filter(
     (entry) => !entry.member.is_self && entry.netCents !== 0,
   );
@@ -42,7 +44,7 @@ export default async function ActivityPage() {
     />
   );
 
-  if (items.length === 0 && outstanding.length === 0) {
+  if (items.length === 0 && outstanding.length === 0 && shared.length === 0) {
     return (
       <section className="space-y-6">
         {header}
@@ -59,7 +61,11 @@ export default async function ActivityPage() {
     <section className="space-y-6">
       <MarkReadOnView hasUnread={hasUnread} />
       {header}
-      <OutstandingBalances balances={outstanding} selfMemberId={selfMemberId} />
+      <OutstandingBalances
+        balances={outstanding}
+        shared={shared}
+        selfMemberId={selfMemberId}
+      />
       {items.length > 0 ? (
         <ActivityView items={items} meId={user.id} />
       ) : null}

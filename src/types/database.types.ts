@@ -678,6 +678,18 @@ export interface Database {
         Args: { p_events: Json };
         Returns: number;
       };
+      // Migration 0021 — record ONE settlement against the balance with a member,
+      // callable by either the ledger owner or the account that member represents.
+      // Returns the settlement id, or null when the caller isn't a party.
+      settle_member: {
+        Args: {
+          p_member_id: string;
+          p_amount_cents: number;
+          p_member_pays: boolean;
+          p_group_id?: string | null;
+        };
+        Returns: string | null;
+      };
     };
     Enums: {
       group_type: 'trip' | 'home' | 'friends' | 'couple' | 'office' | 'other';

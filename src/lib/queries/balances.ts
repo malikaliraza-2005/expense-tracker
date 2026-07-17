@@ -65,6 +65,16 @@ const getBalanceContext = cache(async (): Promise<BalanceContext> => {
   };
 });
 
+/**
+ * The ledger rows visible to the caller, shaped for the balance engine. RLS decides
+ * the scope: your own rows, plus what 0015/0021 share with you as a participant. Use
+ * with {@link balanceWith} to net any two members from one source of truth.
+ */
+export async function getBalanceRows(): Promise<BalanceRows> {
+  const { rows } = await getBalanceContext();
+  return rows;
+}
+
 /** The owner's non-zero net balances with every member. */
 export async function getBalances(): Promise<CounterpartyBalance[]> {
   const { me, rows } = await getBalanceContext();
@@ -125,3 +135,76 @@ export async function getSelfMemberId(): Promise<string | null> {
   const { me } = await getBalanceContext();
   return me;
 }
+
+/**
+ * A balance the current user has inside *someone else's* ledger — the other side of
+ * the single-owner model.
+ */
+export interface SharedBalance {
+  /** The member representing ME in their ledger (the settle target). */
+  memberId: string;
+  /** The account that owns that ledger. */
+  ownerId: string;
+  /** That account's display name (their self-member's name). */
+  counterpartyName: string;
+  /** Net from MY perspective: > 0 they owe me; < 0 I owe them. Never 0. */
+  netCents: number;
+}
+
+/**
+ * The current user's balances inside other people's ledgers.
+ *
+ * In the single-owner model an expense lives in the ledger of whoever recorded it, and
+ * the other participant appears there as a *member* linked to their account (A's "Bob"
+ * IS account B). So a user's balance with A isn't in their own ledger at all — it's
+ * the net between A's self-member and the member representing them, read from A's
+ * rows. 0015 makes those expenses/splits/members readable, and 0021 adds the
+ * settlements, so the net derived here is the same figure A sees, just from the other
+ * side (hence the inversion: we compute from the representing member's perspective).
+ *
+ * Deliberately runs the same {@link balanceWith} engine as every other balance — the
+ * figure is derived on read from one source of truth, never mirrored or stored, so the
+ * two accounts can't disagree.
+ */
+export const getSharedBalances = cache(async (): Promise<SharedBalance[]> => {
+  const user = await getUser();
+  if (!user) return [];
+
+  const supabase = createClient();
+  const { rows } = await getBalanceContext();
+
+  // Members that represent me in other people's ledgers.
+  const { data: reps } = await supabase
+    .from('members')
+    .select('id, owner_id')
+    .eq('linked_user_id', user.id)
+    .neq('owner_id', user.id);
+  if (!reps || reps.length === 0) return [];
+
+  // Each of those ledgers' self-member — the counterparty on the other side.
+  const ownerIds = [...new Set(reps.map((rep) => rep.owner_id))];
+  const { data: selves } = await supabase
+    .from('members')
+    .select('id, owner_id, name')
+    .in('owner_id', ownerIds)
+    .eq('is_self', true);
+  const selfByOwner = new Map((selves ?? []).map((s) => [s.owner_id, s]));
+
+  const balances: SharedBalance[] = [];
+  for (const rep of reps) {
+    const self = selfByOwner.get(rep.owner_id);
+    if (!self) continue;
+    // From the representing member's perspective — i.e. mine.
+    const netCents = balanceWith(rep.id, self.id, rows);
+    if (netCents === 0) continue;
+    balances.push({
+      memberId: rep.id,
+      ownerId: rep.owner_id,
+      counterpartyName: self.name,
+      netCents,
+    });
+  }
+  return balances.sort((a, b) =>
+    a.counterpartyName.localeCompare(b.counterpartyName),
+  );
+});
