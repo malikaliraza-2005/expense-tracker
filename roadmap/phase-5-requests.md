@@ -1,14 +1,22 @@
 # Phase 5 — Requests page
 
 **Goal:** One page with tabbed sections over the `invitations` table:
-**Sent, Received, Accepted, Rejected, Clarifications.**
+**Received, Sent, Accepted, Rejected.**
 
-**Status:** Not started. Depends on Phase 4 (friend requests + migration 0016's
-recipient RLS, `kind`, `rejected`/`clarifying` statuses).
+**Status:** **Code complete — pending migration 0016 + E2E verification.** Builds,
+typechecks, and unit-tests green (`tests/unit/requests.test.ts`). Depends on Phase
+4's migration 0016 (recipient RLS, `kind`, `rejected` status). Live behaviour of
+the Received/Accepted/Rejected tabs and reciprocal linking is gated on **applying
+0016 by hand** — until then the page degrades to Sent-only (no recipient policy →
+no received rows), with no errors.
 
-> **Confirm before building:** *Clarifications* is the lightest-defined section. It's
-> planned as a note thread on a queried request. If you'd rather route disputes
-> through Phase 6 chat, drop this tab and the `invitation_notes` table.
+> **Decisions taken at build time:**
+> - **Clarifications DROPPED.** The note-thread section (and its `invitation_notes`
+>   table) was cut — that back-and-forth belongs in Phase 6 chat. The reserved
+>   `'clarifying'` status stays in the schema but is unused; the page is four tabs.
+> - **Reciprocity ADDED.** `accept_invite` was extended in 0016 so accepting a
+>   `kind='friend'` request also creates the reciprocal linked member in the
+>   accepter's roster — the friendship shows on both sides, not just the inviter's.
 
 ---
 
@@ -101,9 +109,16 @@ create policy invitation_notes_rw on invitation_notes
 
 ## Done when
 
-- [ ] `/requests` shows all five sections, correctly filtered by direction/status.
-- [ ] Accept / Reject / Ask-a-question work with correct RLS.
-- [ ] Clarifications thread persists and both parties can post (or the tab is dropped
-      by decision).
-- [ ] Requests nav item shows an actionable-received badge.
-- [ ] Tab component lifted to `ui/` so Phase 2 can delete groups safely.
+- [x] `/requests` shows the four sections (Received/Sent/Accepted/Rejected),
+      filtered by direction/status via the pure `filterByTab` helper.
+- [x] Accept / Reject work with correct RLS (`accept_invite` / `reject_invite`).
+      *("Ask a question" removed with Clarifications.)*
+- [x] Clarifications **dropped by decision** — deferred to Phase 6 chat.
+- [x] Requests nav item shows an actionable-received badge (header + bottom bar).
+- [x] Tab component lifted to `src/components/ui/tabs.tsx` (the old `group-tabs`
+      was already removed in Phase 2, so this was rebuilt clean rather than lifted).
+
+**Still to verify (needs 0016 applied + two accounts):** received rows appear for
+the recipient; accept creates the reciprocal friend on both rosters; reject flips to
+'rejected'; badge reflects only actionable-received. See the session memory note
+[[migration-0016-friend-requests-pending]].

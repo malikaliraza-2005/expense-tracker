@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 
 import { safeCurrency } from '@/constants/currencies';
 import { ROUTES } from '@/constants/routes';
+import { logActivity, type ActivityEventInput } from '@/lib/activity-log';
 import { createClient } from '@/lib/supabase/server';
 import { firstError } from '@/schemas/auth.schema';
 import {
@@ -101,6 +102,49 @@ export async function recordSettlement(
 
   revalidatePath(ROUTES.dashboard);
   revalidatePath(ROUTES.expenses);
+
+  // Activity: "You settled … with X in “Group”" on my feed; "… settled … with you"
+  // on each linked party's feed. The counterparty (for my line) is the non-self party;
+  // the group name gives the notification its context and its deep-link target.
+  const [{ data: parties }, { data: group }] = await Promise.all([
+    supabase
+      .from('members')
+      .select('id, name, is_self, linked_user_id')
+      .in('id', [parsed.data.payerId, parsed.data.receiverId]),
+    groupId
+      ? supabase.from('groups').select('name').eq('id', groupId).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+  const payer = parties?.find((p) => p.id === parsed.data.payerId);
+  const receiver = parties?.find((p) => p.id === parsed.data.receiverId);
+  const counterparty = payer?.is_self ? receiver : receiver?.is_self ? payer : receiver;
+  const contextLabel = group?.name ?? null;
+
+  const events: ActivityEventInput[] = [
+    {
+      ownerId: user.id,
+      type: 'settlement_recorded',
+      subject: counterparty?.name ?? 'someone',
+      amountCents: parsed.data.amountCents,
+      currency,
+      groupId,
+      contextLabel,
+    },
+  ];
+  for (const party of [payer, receiver]) {
+    if (party?.linked_user_id && party.linked_user_id !== user.id) {
+      events.push({
+        ownerId: party.linked_user_id,
+        type: 'settlement_received',
+        amountCents: parsed.data.amountCents,
+        currency,
+        groupId,
+        contextLabel,
+      });
+    }
+  }
+  await logActivity(supabase, events);
+
   return { ok: true, data: undefined };
 }
 

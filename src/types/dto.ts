@@ -11,11 +11,15 @@
  * always from the owner's self-member perspective: > 0 the member owes the
  * owner, < 0 the owner owes the member.
  */
+import type { FriendStatus } from '@/lib/friends';
 import type {
+  ActivityType,
   Category,
   Expense,
   Group,
   GroupType,
+  InvitationKind,
+  InvitationStatus,
   Member,
   Settlement,
   SplitType,
@@ -27,10 +31,114 @@ export interface MemberWithBalance {
   netCents: number;
 }
 
+/**
+ * A row on the Friends page (Phase 4): one of the owner's members who is linked to
+ * a real account or at least reachable by email, the owner's net balance with them,
+ * and where they sit on the account-linking journey.
+ */
+export interface FriendListItem {
+  member: Member;
+  /** The owner's net balance with this friend: > 0 they owe you, < 0 you owe them. */
+  netCents: number;
+  /** 'linked' (accepted), 'invited' (pending), or 'not_invited' (emailable). */
+  status: FriendStatus;
+}
+
+/** Which side of an invitation the current user is on. */
+export type RequestDirection = 'sent' | 'received';
+
+/**
+ * A row on the Requests page (Phase 5): one invitation flattened to what the UI
+ * shows, from the current user's point of view. All request state lives in the
+ * `invitations` table; this is the read-shaped projection of it.
+ */
+export interface RequestItem {
+  id: string;
+  /** The invite token, used by accept/reject actions. */
+  token: string;
+  /** 'sent' when the current user is the inviter; 'received' otherwise. */
+  direction: RequestDirection;
+  /** 'friend' (in-app request) vs 'member' (email invite to register). */
+  kind: InvitationKind;
+  /** Effective status — a past-expiry 'pending' is surfaced as 'expired'. */
+  status: InvitationStatus;
+  /** Recipient email (own email on a received row). */
+  email: string;
+  /** The other party's name: sent → the invited member; received → the inviter. */
+  counterpartyName: string;
+  /** ISO timestamp the invite was created, for ordering. */
+  createdAt: string;
+}
+
 /** Detailed one-member view: the member and the owner's net balance with them. */
 export interface MemberBalanceDetail {
   member: Member;
   netCents: number;
+}
+
+/**
+ * One row in the current user's Activity feed (Phase 1). A camel-cased projection of
+ * an `activity_events` row — display strings (`actorName`, `subject`) are denormalized
+ * at write time, so rendering needs no cross-account joins. Whether the current user
+ * was the actor is derived at render (`actorId === meId`).
+ */
+export interface ActivityItem {
+  id: string;
+  type: ActivityType;
+  /** The account that performed the action (null if that account was deleted). */
+  actorId: string | null;
+  /** Denormalized actor display name. */
+  actorName: string | null;
+  /** Denormalized subject label (expense title, group name, or person name). */
+  subject: string | null;
+  expenseId: string | null;
+  groupId: string | null;
+  memberId: string | null;
+  /** The settlement this event is about, when applicable. */
+  settlementId: string | null;
+  /** Denormalized name of the group/expense it happened in (e.g. "Trip to Naran"). */
+  contextLabel: string | null;
+  amountCents: number | null;
+  currency: string | null;
+  /** ISO timestamp, newest-first ordering. */
+  createdAt: string;
+  /** When the current user marked it read, or null. */
+  readAt: string | null;
+}
+
+/**
+ * One chat message in an expense's isolated thread, flattened for the UI. Camel-cased
+ * projection of a `messages` row (keyed by `expenseId`). `pending` is a client-only
+ * flag for an optimistic message not yet confirmed by the server; persisted messages
+ * never carry it.
+ */
+export interface ChatMessage {
+  id: string;
+  /** The expense this message belongs to — the isolation key. */
+  expenseId: string;
+  /** The sending account (`profiles.id`). */
+  senderId: string;
+  body: string;
+  /** ISO timestamp, used for ordering. */
+  createdAt: string;
+  /** True only for an unconfirmed optimistic message on the sender's client. */
+  pending?: boolean;
+}
+
+/**
+ * Everything the per-expense chat panel needs: the current account, whether they may
+ * post (the participant gate), the messages so far (oldest-first), and display names
+ * for other senders. Returned by the chat query for one expense.
+ */
+export interface ExpenseChatData {
+  expenseId: string;
+  /** The current account id — used to align own vs. others' messages. */
+  meId: string;
+  /** True when the current account may read/post (owner or linked participant). */
+  canChat: boolean;
+  messages: ChatMessage[];
+  /** Display name per sender account id (excludes the current user, shown as "You"). */
+  senderNames: Record<string, string>;
 }
 
 /** A group plus lightweight figures for the list card. */

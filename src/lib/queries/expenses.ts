@@ -74,36 +74,64 @@ export interface ExpenseFormData {
 }
 
 /**
- * Build the choices for the expense form: the self-member id and a single
- * "Everyone" scope of all the owner's members.
- *
- * Groups were retired in Phase 2, so the form no longer surfaces a scope picker
- * (it renders only when more than one scope exists). Every expense is now
- * general — `group_id` stays null and the amount is split equally across the
- * chosen people. The `groups`/`group_members` tables remain intact so historical
- * rows still resolve.
+ * Build the choices for the expense form: the self-member id and the scopes the
+ * expense can belong to — a general "Everyone" scope (`id: null`) of all the owner's
+ * members, plus one scope per group (its members). The form surfaces a scope picker
+ * whenever more than one scope exists; picking a group sets `group_id` so the expense
+ * lands in that group's ledger (and its per-expense chat). A general expense keeps
+ * `group_id` null and splits equally across the chosen people.
  */
 export async function getExpenseFormData(): Promise<ExpenseFormData | null> {
   const user = await getUser();
   if (!user) return null;
 
-  const [selfMemberId, members] = await Promise.all([
-    getSelfMemberId(),
-    getMembers(),
-  ]);
+  const supabase = createClient();
+  const [selfMemberId, members, { data: groups }, { data: memberships }] =
+    await Promise.all([
+      getSelfMemberId(),
+      getMembers(),
+      supabase
+        .from('groups')
+        .select('id, name')
+        .order('created_at', { ascending: false }),
+      supabase.from('group_members').select('group_id, member_id'),
+    ]);
+
+  const toScopeMember = (m: (typeof members)[number]): ScopeMember => ({
+    id: m.id,
+    name: m.name,
+    isSelf: m.is_self,
+    email: m.email,
+  });
+  const memberById = new Map(members.map((m) => [m.id, m]));
 
   const everyone: ExpenseScope = {
     id: null,
     label: 'Everyone',
-    members: members.map((m) => ({
-      id: m.id,
-      name: m.name,
-      isSelf: m.is_self,
-      email: m.email,
-    })),
+    members: members.map(toScopeMember),
   };
 
-  return { selfMemberId, scopes: [everyone] };
+  // One scope per group, its members resolved from the owner's roster. The owner's
+  // self-member is always included so they can pay/share even if not an explicit
+  // group member.
+  const memberIdsByGroup = new Map<string, Set<string>>();
+  for (const row of memberships ?? []) {
+    const set = memberIdsByGroup.get(row.group_id) ?? new Set<string>();
+    set.add(row.member_id);
+    memberIdsByGroup.set(row.group_id, set);
+  }
+
+  const groupScopes: ExpenseScope[] = (groups ?? []).map((group) => {
+    const ids = memberIdsByGroup.get(group.id) ?? new Set<string>();
+    if (selfMemberId) ids.add(selfMemberId);
+    const scopeMembers = [...ids]
+      .map((id) => memberById.get(id))
+      .filter((m): m is (typeof members)[number] => Boolean(m))
+      .map(toScopeMember);
+    return { id: group.id, label: group.name, members: scopeMembers };
+  });
+
+  return { selfMemberId, scopes: [everyone, ...groupScopes] };
 }
 
 /** Fetch category rows for a set of ids, keyed by id. */

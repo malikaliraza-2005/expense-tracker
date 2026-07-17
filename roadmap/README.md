@@ -14,9 +14,9 @@ while fixing the invite/email/login bugs and removing redundant pages.
 | 1 | [phase-1-invite-fixes.md](phase-1-invite-fixes.md) | Real email invites, invite landing, no post-login 404 | **Done — pending E2E verification** |
 | 2 | [phase-2-remove-people-groups.md](phase-2-remove-people-groups.md) | Remove People + Groups pages safely | **Done — verified (build + redirects)** |
 | 3 | [phase-3-expense-detail.md](phase-3-expense-detail.md) | Per-member owe/paid/remaining, remove buttons, settle-up, "add to friends?" | **Code complete — pending E2E verification** |
-| 4 | [phase-4-friends.md](phase-4-friends.md) | Friends page: add by email/link, in-app request or email invite | Not started |
-| 5 | [phase-5-requests.md](phase-5-requests.md) | Requests page: Sent/Received/Accepted/Rejected/Clarifications | Not started |
-| 6 | [phase-6-chat.md](phase-6-chat.md) | Real-time text + emoji chat between friends | Not started |
+| 4 | [phase-4-friends.md](phase-4-friends.md) | Friends page: add by email/link, in-app request or email invite | **Code complete — pending 0016 + E2E** |
+| 5 | [phase-5-requests.md](phase-5-requests.md) | Requests page: Sent/Received/Accepted/Rejected (Clarifications dropped) | **Code complete — pending 0016 + E2E** |
+| 6 | [phase-6-chat.md](phase-6-chat.md) | ~~Friend DMs~~ → **per-expense chat** ([docs/update_chat_feature.md](../docs/update_chat_feature.md)) + Groups page restored | **Code complete — apply `0017_expense_chat.sql` (swap), then E2E** |
 | 7 | [phase-7-realtime-sync.md](phase-7-realtime-sync.md) | App-wide live sync (expenses, balances, friends, requests) | Not started |
 | 8 | [phase-8-responsive-edge.md](phase-8-responsive-edge.md) | Responsive audit + edge-case hardening | Not started |
 
@@ -42,10 +42,10 @@ and settle-up). Existing bugs (profile "Invite Friends" builds a dead
    member whose `linked_user_id` points to a real account. No separate friendships
    graph — extend the 0014 invitation/claim rails. Reciprocal linking makes a mutual
    friendship.
-2. **Requests page sections:** Sent, Received, Accepted, Rejected, **Clarifications**.
-   Clarifications = a note thread on a request the recipient queried before deciding.
-   *(This is the one section to confirm vs. routing disputes through chat — see
-   Phase 5.)*
+2. **Requests page sections:** Sent, Received, Accepted, Rejected. **Clarifications
+   was dropped** (Phase 5 build decision): that back-and-forth belongs in Phase 6
+   chat, so no `invitation_notes` table was added — the reserved `'clarifying'`
+   status simply stays unused for now.
 3. **Settle-up moves into Expense Detail** (alongside new per-member owe/paid/
    remaining rows). The People page — its only current home — is removed.
 4. **Chat is gated on accepted friendship only** (both sides linked accounts with an
@@ -86,7 +86,7 @@ and settle-up). Existing bugs (profile "Invite Friends" builds a dead
 
 | Migration | Phase | Adds |
 |-----------|-------|------|
-| `0016_friend_requests.sql` | 4 + 5 | `invitations.kind`, `'rejected'`/`'clarifying'` statuses, recipient-visible RLS, `invitation_notes`, `find_profile_by_email`, `reject_invite` |
+| `0016_friend_requests.sql` | 4 + 5 | `invitations.kind`, `'rejected'`/`'clarifying'` statuses, recipient-visible RLS, `find_profile_by_email`, `reject_invite`, and (Phase 5) `accept_invite` extended for reciprocal friend-linking. `invitation_notes` was **not** added — Clarifications dropped. |
 | `0017_chat.sql` | 6 | `conversations`/`messages`, `are_friends()` helper, friendship-gated RLS |
 
 ## Data synchronization design

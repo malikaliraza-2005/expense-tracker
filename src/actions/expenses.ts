@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 
 import { ROUTES } from '@/constants/routes';
 import { safeCurrency } from '@/constants/currencies';
+import { getLinkedUserIds, logActivity } from '@/lib/activity-log';
 import { computeSplit, recomputeEqualAfterRemoval } from '@/lib/splits';
 import { createClient } from '@/lib/supabase/server';
 import { firstError } from '@/schemas/auth.schema';
@@ -76,7 +77,28 @@ async function getGroupMemberIds(
   return new Set((data ?? []).map((row) => row.member_id));
 }
 
-/** The members the owner may involve for `groupId` (or all members otherwise). */
+/** The owner's self-member id (the "You" participant), or null. */
+async function getSelfMemberId(
+  supabase: Client,
+  ownerId: string,
+): Promise<string | null> {
+  const { data } = await supabase
+    .from('members')
+    .select('id')
+    .eq('owner_id', ownerId)
+    .eq('is_self', true)
+    .maybeSingle();
+  return data?.id ?? null;
+}
+
+/**
+ * The members the owner may involve for `groupId` (or all members otherwise).
+ *
+ * For a group, that's the group's members PLUS the owner's own self-member: the owner
+ * always participates in their own group's expenses (they're usually the payer), even
+ * without an explicit `group_members` row. This mirrors the expense form's group scope
+ * — which offers "You" — so the form and this server-side guard agree on who's allowed.
+ */
 async function allowedMembers(
   supabase: Client,
   ownerId: string,
@@ -87,6 +109,8 @@ async function allowedMembers(
     if (ids.size === 0) {
       return { ok: false, error: 'That group has no members.' };
     }
+    const selfId = await getSelfMemberId(supabase, ownerId);
+    if (selfId) ids.add(selfId);
     return { ok: true, ids };
   }
   return { ok: true, ids: await getOwnerMemberIds(supabase, ownerId) };
@@ -195,6 +219,31 @@ export async function createExpense(
 
   const expense = data as Expense;
   revalidateExpensePaths(parsed.data.groupId, expense.id);
+
+  // Activity: "You added …" on my feed, "… added you to …" on each linked
+  // participant's feed. Best-effort — never fails the write.
+  const linked = await getLinkedUserIds(
+    supabase,
+    resolved.rows.map((row) => row.member_id),
+    user.id,
+  );
+  await logActivity(supabase, [
+    {
+      ownerId: user.id,
+      type: 'expense_created',
+      subject: parsed.data.title,
+      expenseId: expense.id,
+      groupId: parsed.data.groupId,
+    },
+    ...linked.map((uid) => ({
+      ownerId: uid,
+      type: 'expense_added_you' as const,
+      subject: parsed.data.title,
+      expenseId: expense.id,
+      groupId: parsed.data.groupId,
+    })),
+  ]);
+
   return { ok: true, data: expense };
 }
 
@@ -237,6 +286,30 @@ export async function updateExpense(
 
   const expense = data as Expense;
   revalidateExpensePaths(parsed.data.groupId, expense.id);
+
+  // Activity: "You edited …" on my feed, "… edited …" on each linked participant's.
+  const linked = await getLinkedUserIds(
+    supabase,
+    resolved.rows.map((row) => row.member_id),
+    user.id,
+  );
+  await logActivity(supabase, [
+    {
+      ownerId: user.id,
+      type: 'expense_updated',
+      subject: parsed.data.title,
+      expenseId: expense.id,
+      groupId: parsed.data.groupId,
+    },
+    ...linked.map((uid) => ({
+      ownerId: uid,
+      type: 'expense_updated' as const,
+      subject: parsed.data.title,
+      expenseId: expense.id,
+      groupId: parsed.data.groupId,
+    })),
+  ]);
+
   return { ok: true, data: expense };
 }
 
@@ -366,16 +439,35 @@ export async function deleteExpense(input: {
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'You must be signed in.' };
 
-  const { data: existing } = await supabase
-    .from('expenses')
-    .select('group_id')
-    .eq('id', expenseId)
-    .single();
+  // Capture the title + participants BEFORE deleting (splits cascade away) so the
+  // activity can name the expense and reach everyone who was on it.
+  const [{ data: existing }, { data: splitRows }] = await Promise.all([
+    supabase.from('expenses').select('group_id, title').eq('id', expenseId).single(),
+    supabase.from('expense_splits').select('member_id').eq('expense_id', expenseId),
+  ]);
   if (!existing) return { ok: false, error: 'Expense not found.' };
+  const linked = await getLinkedUserIds(
+    supabase,
+    (splitRows ?? []).map((row) => row.member_id),
+    user.id,
+  );
 
   const { error } = await supabase.from('expenses').delete().eq('id', expenseId);
   if (error) return { ok: false, error: GENERIC_ERROR };
 
   revalidateExpensePaths(existing.group_id);
+
+  // Activity: "You deleted …" / "… deleted …". No expense_id — the row is gone; the
+  // title lives on in `subject`.
+  await logActivity(supabase, [
+    { ownerId: user.id, type: 'expense_deleted', subject: existing.title, groupId: existing.group_id },
+    ...linked.map((uid) => ({
+      ownerId: uid,
+      type: 'expense_deleted' as const,
+      subject: existing.title,
+      groupId: existing.group_id,
+    })),
+  ]);
+
   return { ok: true, data: undefined };
 }

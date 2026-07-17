@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 
 import { ArrowLeft } from 'lucide-react';
 
+import { ExpenseChat } from '@/components/chat/expense-chat';
 import {
   ExpenseDetail,
   type ExpensePayment,
@@ -16,6 +17,7 @@ import {
   getGroupBalances,
   getSelfMemberId,
 } from '@/lib/queries/balances';
+import { getExpenseChat } from '@/lib/queries/chat';
 import { getExpense } from '@/lib/queries/expenses';
 import { listSettlements } from '@/lib/queries/settlements';
 
@@ -35,6 +37,9 @@ export default async function ExpenseDetailPage({
   const user = await requireUser();
   const detail = await getExpense(params.expenseId);
   if (!detail) notFound();
+
+  // Load this expense's isolated chat thread in parallel with the owner-only reads.
+  const chatPromise = getExpenseChat(params.expenseId);
 
   // The viewer owns this expense (full controls) vs. sees it shared (read-only).
   const isOwner = detail.expense.owner_id === user.id;
@@ -104,6 +109,8 @@ export default async function ExpenseDetailPage({
         netByMember={netByMember}
         payments={payments}
       />
+
+      <ExpenseChat data={await chatPromise} />
     </section>
   );
 }

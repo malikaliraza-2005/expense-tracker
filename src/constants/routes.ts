@@ -14,10 +14,18 @@ export const ROUTES = {
   dashboard: '/dashboard',
   expenses: '/expenses',
   newExpense: '/expenses/new',
-  // Retired in Phase 2 — both redirect to /expenses (see next.config.mjs). Kept
-  // as constants so the redirect sources and any lingering references resolve.
-  members: '/members',
+  /** Phase 4 — Friends page (add by email/link, running balances, settle-up). */
+  friends: '/friends',
+  /** Phase 5 — Requests page (Sent / Received / Accepted / Rejected). */
+  requests: '/requests',
+  /** Restored — Groups page (organise shared expenses; per-expense chat lives on
+   * Expense Detail, not a standalone route). */
   groups: '/groups',
+  /** Activity feed — chronological history of everything involving the user. */
+  activity: '/activity',
+  // Retired in Phase 2 — redirects to /expenses (see next.config.mjs). Kept as a
+  // constant so the redirect source and any lingering references resolve.
+  members: '/members',
   profile: '/profile',
   settings: '/settings',
 } as const;

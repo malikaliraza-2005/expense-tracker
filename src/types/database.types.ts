@@ -131,6 +131,8 @@ export interface Database {
           target_expense_id: string | null;
           target_group_id: string | null;
           status: string;
+          // Migration 0016 — 'member' (email invite) vs 'friend' (in-app request).
+          kind: string;
           accepted_user_id: string | null;
           accepted_at: string | null;
           created_at: string;
@@ -145,6 +147,7 @@ export interface Database {
           target_expense_id?: string | null;
           target_group_id?: string | null;
           status?: string;
+          kind?: string;
           accepted_user_id?: string | null;
           accepted_at?: string | null;
           created_at?: string;
@@ -159,6 +162,7 @@ export interface Database {
           target_expense_id?: string | null;
           target_group_id?: string | null;
           status?: string;
+          kind?: string;
           accepted_user_id?: string | null;
           accepted_at?: string | null;
           created_at?: string;
@@ -456,6 +460,115 @@ export interface Database {
           },
         ];
       };
+      // Migration 0017 — a text/emoji message in one expense's isolated chat thread,
+      // keyed by expense_id. sender_id is an account (profiles.id).
+      messages: {
+        Row: {
+          id: string;
+          expense_id: string;
+          sender_id: string;
+          body: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          expense_id: string;
+          sender_id: string;
+          body: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          expense_id?: string;
+          sender_id?: string;
+          body?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'messages_expense_id_fkey';
+            columns: ['expense_id'];
+            referencedRelation: 'expenses';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'messages_sender_id_fkey';
+            columns: ['sender_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      // Migration 0018 — per-user activity feed (owner_id = whose feed). Written only
+      // via the log_activity() RPC; display strings are denormalized.
+      activity_events: {
+        Row: {
+          id: string;
+          owner_id: string;
+          type: string;
+          actor_id: string | null;
+          actor_name: string | null;
+          subject: string | null;
+          expense_id: string | null;
+          group_id: string | null;
+          member_id: string | null;
+          // Migration 0020 — settlement link + denormalized context name.
+          settlement_id: string | null;
+          context_label: string | null;
+          amount_cents: number | null;
+          currency: string | null;
+          created_at: string;
+          read_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          owner_id: string;
+          type: string;
+          actor_id?: string | null;
+          actor_name?: string | null;
+          subject?: string | null;
+          expense_id?: string | null;
+          group_id?: string | null;
+          member_id?: string | null;
+          settlement_id?: string | null;
+          context_label?: string | null;
+          amount_cents?: number | null;
+          currency?: string | null;
+          created_at?: string;
+          read_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          owner_id?: string;
+          type?: string;
+          actor_id?: string | null;
+          actor_name?: string | null;
+          subject?: string | null;
+          expense_id?: string | null;
+          group_id?: string | null;
+          member_id?: string | null;
+          settlement_id?: string | null;
+          context_label?: string | null;
+          amount_cents?: number | null;
+          currency?: string | null;
+          created_at?: string;
+          read_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'activity_events_owner_id_fkey';
+            columns: ['owner_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'activity_events_actor_id_fkey';
+            columns: ['actor_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -539,6 +652,31 @@ export interface Database {
       can_see_member: {
         Args: { p_member_id: string };
         Returns: boolean;
+      };
+      // Migration 0016 — account id for an email (or null). Routes add-by-email
+      // to an in-app friend request (hit) vs an email invite (miss).
+      find_profile_by_email: {
+        Args: { p_email: string };
+        Returns: string | null;
+      };
+      // Migration 0016 — recipient declines a pending/clarifying invite; true when
+      // a row changed.
+      reject_invite: {
+        Args: { p_token: string };
+        Returns: boolean;
+      };
+      // Migration 0017 — per-expense chat gate: true when the caller owns the expense
+      // or is a linked participant. Used by messages RLS and callable to decide
+      // whether to show the composer.
+      can_chat_expense: {
+        Args: { p_expense: string };
+        Returns: boolean;
+      };
+      // Migration 0018 — append activity events (JSON array) to feeds; pins the actor
+      // to auth.uid() and guards cross-feed writes. Returns the count inserted.
+      log_activity: {
+        Args: { p_events: Json };
+        Returns: number;
       };
     };
     Enums: {

@@ -6,7 +6,12 @@ import { usePathname } from 'next/navigation';
 import { Plus } from 'lucide-react';
 
 import { Logo } from '@/components/common/logo';
-import { PRIMARY_NAV, isActiveRoute } from '@/components/layout/nav-config';
+import {
+  PRIMARY_NAV,
+  badgeLabel,
+  isActiveRoute,
+  type NavBadges,
+} from '@/components/layout/nav-config';
 import { UserMenu } from '@/components/layout/user-menu';
 import { Button } from '@/components/ui/button';
 import { ROUTES } from '@/constants/routes';
@@ -24,9 +29,11 @@ import { cn } from '@/utils/cn';
 export function AppHeader({
   name,
   avatarUrl,
+  badges,
 }: {
   name: string | null;
   avatarUrl: string | null;
+  badges?: NavBadges;
 }) {
   const pathname = usePathname();
 
@@ -48,6 +55,7 @@ export function AppHeader({
           {PRIMARY_NAV.map((item) => {
             const active = isActiveRoute(pathname, item.href);
             const Icon = item.icon;
+            const count = badges?.[item.href] ?? 0;
             return (
               <Link
                 key={item.href}
@@ -65,6 +73,14 @@ export function AppHeader({
                 )}
                 <Icon className="h-4 w-4 transition-transform duration-200 group-hover:scale-110" />
                 {item.label}
+                {count > 0 ? (
+                  <span
+                    aria-label={`${count} awaiting you`}
+                    className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-white shadow-glow-sm"
+                  >
+                    {badgeLabel(count)}
+                  </span>
+                ) : null}
               </Link>
             );
           })}

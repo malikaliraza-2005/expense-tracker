@@ -3,11 +3,14 @@
 import { revalidatePath } from 'next/cache';
 
 import { ROUTES } from '@/constants/routes';
+import { logActivity } from '@/lib/activity-log';
 import { sendInviteEmail } from '@/lib/email/resend';
+import { decideAddRoute } from '@/lib/friends';
 import { createClient } from '@/lib/supabase/server';
 import { firstError } from '@/schemas/auth.schema';
 import { validateInvite, type InviteFormInput } from '@/schemas/invite.schema';
 import type { ActionResult } from '@/types';
+import type { InvitationKind } from '@/types/db';
 
 /**
  * Invitation Server Actions (Phase 1). The owner invites one of their people by
@@ -34,6 +37,8 @@ export interface InviteResult {
   deliveryConfigured: boolean;
   /** The member the invite is bound to (existing or newly created). */
   memberId: string;
+  /** The member's display name, for the confirmation message. */
+  memberName: string;
 }
 
 const norm = (value: string): string => value.trim().toLowerCase();
@@ -52,13 +57,17 @@ function siteOrigin(): string {
  * `options.send` (default true) chooses the mode: with `send: true` it emails the
  * invite via Resend; with `send: false` it only mints/returns the link for the
  * owner to share manually — no email is attempted either way when Resend is
- * unconfigured.
+ * unconfigured. `options.kind` (default 'member') tags a newly-minted invite as a
+ * plain member email-invite or a 'friend' request (Phase 4); a reused pending
+ * invite is promoted to 'friend' when asked, since only one live invite per
+ * member+email can exist.
  */
 export async function inviteMemberByEmail(
   input: InviteFormInput,
-  options?: { send?: boolean },
+  options?: { send?: boolean; kind?: InvitationKind },
 ): Promise<ActionResult<InviteResult>> {
   const send = options?.send ?? true;
+  const kind: InvitationKind = options?.kind ?? 'member';
   const parsed = validateInvite(input);
   if (!parsed.success) {
     return { ok: false, error: firstError(parsed.errors) ?? 'Invalid invite.' };
@@ -136,11 +145,23 @@ export async function inviteMemberByEmail(
         email,
         target_expense_id: targetExpenseId,
         target_group_id: targetGroupId,
+        // Only set `kind` for a friend request — omitting it lets the DB default
+        // ('member') stand, keeping this insert valid even before 0016 is applied.
+        ...(kind === 'friend' ? { kind } : {}),
       })
       .select('token')
       .single();
     if (inviteError || !invite) return { ok: false, error: GENERIC_ERROR };
     token = invite.token;
+  } else if (kind === 'friend') {
+    // Reused an existing live invite (the pending unique index allows only one per
+    // member+email, any kind). Promote it to a friend request so the outcome and
+    // the row agree; a no-op if it was already 'friend'.
+    await supabase
+      .from('invitations')
+      .update({ kind })
+      .eq('token', token)
+      .eq('status', 'pending');
   }
 
   // ── Deliver (or not). Never fails the action on a mail error — the link is
@@ -178,10 +199,147 @@ export async function inviteMemberByEmail(
 
   revalidatePath(ROUTES.dashboard);
   revalidatePath(ROUTES.expenses);
+  revalidatePath(ROUTES.friends);
   return {
     ok: true,
-    data: { token, link, emailed, deliveryConfigured, memberId: member.id },
+    data: {
+      token,
+      link,
+      emailed,
+      deliveryConfigured,
+      memberId: member.id,
+      memberName: member.name,
+    },
   };
+}
+
+/** How an add-friend resolved, driving the confirmation message. */
+export type FriendAddOutcome =
+  /** The email had an account → an in-app friend request was created. */
+  | 'request'
+  /** No account for the email → an email invite to register was sent/prepared. */
+  | 'invited'
+  /** Share-a-link mode → a copyable invite link was minted. */
+  | 'link';
+
+export interface FriendAddResult {
+  outcome: FriendAddOutcome;
+  memberId: string;
+  memberName: string;
+  /**
+   * The copyable `/invite/<token>` link. Always present — the 'request' path
+   * mints one too, though that request is surfaced in-app rather than by link.
+   */
+  link: string;
+  /** True only when an email was actually sent (Resend accepted it). */
+  emailed: boolean;
+  /** Whether email delivery is configured (a `RESEND_API_KEY` is present). */
+  deliveryConfigured: boolean;
+}
+
+function toFriendResult(r: InviteResult): Omit<FriendAddResult, 'outcome'> {
+  return {
+    memberId: r.memberId,
+    memberName: r.memberName,
+    link: r.link,
+    emailed: r.emailed,
+    deliveryConfigured: r.deliveryConfigured,
+  };
+}
+
+/**
+ * Add a friend by email or shareable link (Phase 4). A friend is a member linked
+ * to a real account, so this rides the same 0014/0016 invitation rail rather than
+ * introducing a social graph.
+ *
+ *   - `mode: 'link'` — mint a copyable `/invite/<token>` to share manually.
+ *   - `mode: 'auto'` (default) — branch on whether the email already has an account:
+ *       • it does, and isn't you → an in-app **friend request** (`kind='friend'`),
+ *         which the recipient sees on their Requests page (Phase 5).
+ *       • it doesn't → an **email invite** (`kind='member'`) to register and claim.
+ *
+ * Adding your own email is rejected. The account lookup uses `find_profile_by_email`
+ * (migration 0016); if that helper isn't live yet, or errors, this falls back to the
+ * always-safe email-invite path rather than blocking the add. Expected failures are
+ * returned, never thrown.
+ */
+export async function addFriend(
+  input: InviteFormInput,
+  options?: { mode?: 'auto' | 'link' },
+): Promise<ActionResult<FriendAddResult>> {
+  const mode = options?.mode ?? 'auto';
+  const parsed = validateInvite(input);
+  if (!parsed.success) {
+    return { ok: false, error: firstError(parsed.errors) ?? 'Invalid invite.' };
+  }
+  const email = norm(parsed.data.email);
+
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'You must be signed in.' };
+
+  // Share-a-link mode never emails and never needs an account lookup.
+  if (mode === 'link') {
+    const result = await inviteMemberByEmail(input, { send: false });
+    if (!result.ok) return result;
+    return { ok: true, data: { outcome: 'link', ...toFriendResult(result.data) } };
+  }
+
+  // Auto: does the email already have an account? A missing/failed lookup (0016
+  // not applied yet) degrades to the email-invite path.
+  const { data: profileId, error: lookupError } = await supabase.rpc(
+    'find_profile_by_email',
+    { p_email: email },
+  );
+  const route = lookupError
+    ? 'invite'
+    : decideAddRoute({
+        profileId: (profileId as string | null) ?? null,
+        ownerId: user.id,
+      });
+
+  if (route === 'self') {
+    return {
+      ok: false,
+      error: 'That’s your own email — you can’t add yourself.',
+    };
+  }
+
+  if (route === 'request') {
+    // Existing account → in-app friend request (no email; shown on Requests).
+    const result = await inviteMemberByEmail(input, {
+      send: false,
+      kind: 'friend',
+    });
+    if (!result.ok) return result;
+    await logActivity(supabase, [
+      {
+        ownerId: user.id,
+        type: 'friend_added',
+        subject: result.data.memberName,
+        memberId: result.data.memberId,
+      },
+    ]);
+    return {
+      ok: true,
+      data: { outcome: 'request', ...toFriendResult(result.data) },
+    };
+  }
+
+  // No account → email invite to register and claim the member row.
+  const result = await inviteMemberByEmail(input, { send: true });
+  if (!result.ok) return result;
+  await logActivity(supabase, [
+    {
+      ownerId: user.id,
+      type: 'friend_added',
+      subject: result.data.memberName,
+      memberId: result.data.memberId,
+    },
+  ]);
+  return { ok: true, data: { outcome: 'invited', ...toFriendResult(result.data) } };
 }
 
 /**
@@ -215,4 +373,34 @@ export async function acceptInvite(
 
   revalidatePath('/', 'layout');
   return { ok: true, data: { route: data } };
+}
+
+/**
+ * Reject an invite the signed-in user received (Phase 5). Flips a pending invite
+ * addressed to them — matched by their account or email — to 'rejected' via the
+ * `reject_invite` RPC (migration 0016), whose WHERE clause is the authorization
+ * guard. Succeeds with `changed: false` when nothing matched (already decided,
+ * revoked, or expired) so the Requests UI can refresh idempotently; only a hard
+ * RPC error is surfaced.
+ */
+export async function rejectInvite(
+  token: unknown,
+): Promise<ActionResult<{ changed: boolean }>> {
+  const value = typeof token === 'string' ? token.trim() : '';
+  if (!value) return { ok: false, error: 'Missing invite.' };
+
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'You must be signed in.' };
+
+  const { data, error } = await supabase.rpc('reject_invite', {
+    p_token: value,
+  });
+  if (error) return { ok: false, error: GENERIC_ERROR };
+
+  // Refresh the whole shell so both the Requests tabs and the nav badge update.
+  revalidatePath('/', 'layout');
+  return { ok: true, data: { changed: Boolean(data) } };
 }

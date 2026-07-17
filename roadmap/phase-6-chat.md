@@ -1,10 +1,46 @@
 # Phase 6 — Real-time chat (friends only)
 
-**Goal:** Real-time text + emoji chat, enabled only between users whose profiles exist
-and who are **accepted friends**.
+> ⚠️ **SUPERSEDED by [docs/update_chat_feature.md](../docs/update_chat_feature.md).**
+> Chat was rebuilt as **per-expense** (one isolated thread per group/non-group
+> expense, keyed by `messages.expense_id`, gated by expense participation) — NOT
+> friend-to-friend DMs. The friend-DM implementation described below was removed. See
+> that doc and [[migration-0017-chat-pending]] for the live model; this file is kept
+> for history only.
 
-**Status:** Not started. Depends on Phases 4/5 (accepted-friendship state) and
-migration **0017**. This is the first phase to use Supabase realtime.
+**Goal (original, superseded):** Real-time text + emoji chat, enabled only between
+users whose profiles exist and who are **accepted friends**.
+
+**Status:** **SUPERSEDED — the friend-DM build was replaced by per-expense chat.** The
+original friend-DM notes below no longer describe the shipped feature. The earlier
+friend-DM `0017_chat.sql` was applied to the live DB; the replacement
+`0017_expense_chat.sql` DROPS it and creates the expense-keyed schema (apply by hand).
+Original notes retained for history:
+
+<!-- historical (superseded) -->
+This was
+first phase to use Supabase realtime.
+
+> **Bug caught during verification (fixed):** a plpgsql function `returns <table
+> type>` that returns SQL `NULL` comes back through PostgREST as an **all-null object**
+> (`{ id: null, … }`), not JSON `null`. So `send_message`'s blocked path is guarded on
+> `!row || !row.id`, not `!row` — otherwise a blocked send would read as success with a
+> null-body message. (Scalar-returning RPCs like `get_or_create_conversation` return a
+> proper `null`.)
+
+> **Decisions taken at build time:**
+> - **Writes go through SECURITY DEFINER RPCs.** `send_message` (find-or-create
+>   conversation + insert + return row) and `get_or_create_conversation` were added to
+>   0017 so message sending is atomic, race-safe on first-open from both sides, and
+>   sidesteps this project's documented INSERT…RETURNING/RLS interaction (0009). The
+>   friendship-gated RLS from the plan is kept verbatim — it governs every direct read
+>   and the realtime subscription.
+> - **Realtime enabled via SQL.** 0017 adds `messages` to the `supabase_realtime`
+>   publication (equivalent to the dashboard Database → Replication toggle) so enabling
+>   it is reproducible, not a manual click.
+> - **Presence / typing indicators dropped** for this phase (they were optional in the
+>   plan) — deferred to keep Phase 6 focused on live send/receive.
+> - **Unread badges deferred.** `messages.read_at` is added to the schema but unused;
+>   the nav Chat item carries no badge yet (a future unread-indicator feature).
 
 ---
 
@@ -123,8 +159,20 @@ create policy messages_rw on messages
 
 ## Done when
 
-- [ ] Migration 0017 applied; Realtime enabled on `messages`.
-- [ ] Friends can chat live (text + emoji); messages persist.
-- [ ] Non-friends cannot open or post to a conversation (RLS-enforced).
-- [ ] Optimistic send + realtime echo dedupe cleanly; ordering stable.
-- [ ] Bodies rendered as text (no XSS); length cap enforced.
+- [x] Migration 0017 applied; Realtime enabled on `messages`. *(Applied by hand; the
+      migration `alter publication`s `messages` into `supabase_realtime`, so no separate
+      dashboard toggle was needed — realtime delivery confirmed in the E2E test.)*
+- [x] Friends can chat live (text + emoji); messages persist. *(Send action →
+      `send_message` insert persists; a subscribed friend received a live INSERT.)*
+- [x] Non-friends cannot open or post to a conversation (RLS-enforced). *(Verified: an
+      outsider's open/send returned null and their message read returned 0 rows; the
+      thread query returns null so the page shows an unavailable state.)*
+- [x] Optimistic send + realtime echo dedupe cleanly; ordering stable. *(Pure
+      `mergeMessage`/`replaceMessage`/`sortMessages` in `src/lib/chat.ts`, unit-tested.)*
+- [x] Bodies rendered as text (no XSS); length cap enforced. *(Rendered via `{body}`,
+      never HTML; `char_length` check + `isSendableBody` cap at 2000.)*
+
+**Verified end-to-end** via a seeded service-role test — DB gating (RLS + `are_friends`
++ the open/send RPCs), canonical-conversation dedupe, unfriend-freeze, and live
+realtime delivery all pass. Remaining nicety for a future phase: a two-browser UI pass
+for the optimistic-send feel. See [[migration-0017-chat-pending]].

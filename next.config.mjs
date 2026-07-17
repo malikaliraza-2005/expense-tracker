@@ -17,19 +17,16 @@ const nextConfig = {
   // the product is still evolving. Runs before middleware, so these never reach a
   // missing route.
   //
-  // `/members` (People) and `/groups` were retired in Phase 2 — People's balance
-  // and settle-up functions moved onto Expense Detail, and Groups is redundant
-  // with the name-based, equal-split model. `/search` redirects here because
-  // search now lives inline on the expenses page.
+  // `/members` (People) was retired in Phase 2 — People's balance and settle-up
+  // functions moved onto Expense Detail. `/search` redirects here because search now
+  // lives inline on the expenses page. (`/friends` is a live route again as of Phase
+  // 4; `/groups` was restored to organise shared expenses and per-expense chat, so it
+  // is no longer redirected either.)
   async redirects() {
     return [
-      { source: '/friends', destination: '/expenses', permanent: false },
-      { source: '/friends/:path*', destination: '/expenses', permanent: false },
       { source: '/search', destination: '/expenses', permanent: false },
       { source: '/members', destination: '/expenses', permanent: false },
       { source: '/members/:path*', destination: '/expenses', permanent: false },
-      { source: '/groups', destination: '/expenses', permanent: false },
-      { source: '/groups/:path*', destination: '/expenses', permanent: false },
     ];
   },
 

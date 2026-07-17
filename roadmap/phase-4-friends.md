@@ -4,7 +4,9 @@
 profile, send an in-app friend request; if not, send an email invitation with an
 account-creation link.
 
-**Status:** Not started. Depends on Phase 1 (invite plumbing) and migration **0016**.
+**Status:** Code complete — pending migration **0016** (apply by hand) + E2E on a
+second seeded account. Built on Phase 1 (invite plumbing). tsc + lint + vitest
+(40/40) + `next build` (16 routes; `/friends` live, 124 kB First Load) all green.
 
 ---
 
@@ -115,9 +117,39 @@ grant execute on function reject_invite(text) to authenticated;
 
 ## Done when
 
-- [ ] `/friends` lists linked/invited members with balances + settle-up.
-- [ ] Add-by-email routes to in-app request or email invite based on profile
+- [x] `/friends` lists linked/invited members with balances + settle-up.
+- [x] Add-by-email routes to in-app request or email invite based on profile
       existence.
-- [ ] Add-by-link produces a copyable `/invite/<token>`.
-- [ ] Migration 0016 applied; `database.types.ts` hand-synced.
-- [ ] RLS verified: recipient sees their request; no profile leak.
+- [x] Add-by-link produces a copyable `/invite/<token>`.
+- [~] Migration 0016 written; `database.types.ts` hand-synced. **Apply by hand.**
+- [~] RLS verified: recipient sees their request; no profile leak. **Pending a
+      second seeded account + 0016 applied** (same gating as Phases 1/3).
+
+## Implementation notes
+
+- **Friend = member with email and/or `linked_user_id`.** `getFriends`
+  (`src/lib/queries/friends.ts`) filters the owner's members to those, joins the
+  balance-engine net, and derives a `FriendStatus` (`linked` / `invited` /
+  `not_invited`) via the pure `src/lib/friends.ts`. Plain name-only members with no
+  email stay on Expense Detail, not here.
+- **Add flow** is a single `addFriend` action (`src/actions/invite.ts`) that
+  delegates to the extended `inviteMemberByEmail`: `mode:'link'` → share link;
+  `mode:'auto'` → `find_profile_by_email` decides request (`kind='friend'`,
+  `send:false`) vs email invite (`kind='member'`, `send:true`). Self-add is
+  rejected. **Graceful degrade:** if `find_profile_by_email` isn't live yet (0016
+  unapplied) or errors, it falls back to the email-invite path — the page and add
+  dialog work today; the request-routing lights up once 0016 lands.
+- **Pending-invite uniqueness:** the 0014 partial index allows one live invite per
+  member+email regardless of kind, so a reused pending invite is *promoted* to
+  `kind='friend'` rather than duplicated.
+- **`find_profile_by_email` returns the account id** (or null), not a boolean — the
+  self-check compares it to `auth.uid()` (via `decideAddRoute`). It exposes only
+  that single id, never profile/auth detail (SECURITY DEFINER over `auth.users`).
+- **Deviations from the plan:** (1) `invite.schema.ts` was **not** given a `kind`
+  field — the client never sends `kind`; it's decided server-side, so validating it
+  would be dead surface. (2) `invitation_notes` (Clarifications) is **not** in 0016
+  yet — it's Phase 5's; 0016 has a marked append point for it. (3) Nav: Friends was
+  added to `PRIMARY_NAV` (Home · Expenses · Friends around the center Add).
+- **UI:** `/friends` page + `loading.tsx`; `components/friends/{add-friend-dialog,
+  friend-row-actions}.tsx`. Settle-up reuses `SettleUpDialog`; per-row invite reuses
+  `InviteByEmailDialog`. `next.config` no longer redirects `/friends` → `/expenses`.
