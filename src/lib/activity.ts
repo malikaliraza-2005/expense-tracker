@@ -58,19 +58,26 @@ export function describeActivity(item: ActivityItem, meId: string): string {
     case 'expense_created':
       return `${who} added “${subject}”`;
     case 'expense_added_you':
-      return `${actor} added you to “${subject}”`;
+      // Say what it means for the reader, so they don't have to open it to find out.
+      // Signed like every other balance: negative = they owe.
+      if (item.amountCents == null || item.amountCents === 0) {
+        return `${actor} added you to “${subject}”`;
+      }
+      return item.amountCents < 0
+        ? `${actor} added you to “${subject}” — you owe ${money}`
+        : `${actor} added you to “${subject}” — you’re owed ${money}`;
     case 'expense_updated':
       return `${who} edited “${subject}”`;
     case 'expense_deleted':
       return `${who} deleted “${subject}”`;
     case 'group_created':
-      return `${who} created “${subject}”`;
+      return `${who} created the group “${subject}”`;
     case 'group_added_you':
-      return `${actor} added you to “${subject}”`;
+      return `${actor} added you to the group “${subject}”`;
     case 'group_removed_you':
-      return `${actor} removed you from “${subject}”`;
+      return `${actor} removed you from the group “${subject}”`;
     case 'group_left':
-      return `${who} left “${subject}”`;
+      return `${who} left the group “${subject}”`;
     case 'settlement_recorded':
       return `${who} settled ${money} with ${subject}${context}`;
     case 'settlement_received':

@@ -4,7 +4,11 @@ import { revalidatePath } from 'next/cache';
 
 import { ROUTES } from '@/constants/routes';
 import { safeCurrency } from '@/constants/currencies';
-import { getLinkedUserIds, logActivity } from '@/lib/activity-log';
+import {
+  getLinkedMembers,
+  getLinkedUserIds,
+  logActivity,
+} from '@/lib/activity-log';
 import { computeSplit, recomputeEqualAfterRemoval } from '@/lib/splits';
 import { createClient } from '@/lib/supabase/server';
 import { firstError } from '@/schemas/auth.schema';
@@ -220,9 +224,11 @@ export async function createExpense(
   const expense = data as Expense;
   revalidateExpensePaths(parsed.data.groupId, expense.id);
 
-  // Activity: "You added …" on my feed, "… added you to …" on each linked
-  // participant's feed. Best-effort — never fails the write.
-  const linked = await getLinkedUserIds(
+  // Activity: "You added …" on my feed, "… added you to … — you owe X" on each linked
+  // participant's feed. Each recipient gets THEIR figure, so the notification says
+  // what it means for them rather than making them open the expense to find out.
+  // Best-effort — never fails the write.
+  const linked = await getLinkedMembers(
     supabase,
     resolved.rows.map((row) => row.member_id),
     user.id,
@@ -235,16 +241,33 @@ export async function createExpense(
       expenseId: expense.id,
       groupId: parsed.data.groupId,
     },
-    ...linked.map((uid) => ({
-      ownerId: uid,
+    ...linked.map((entry) => ({
+      ownerId: entry.userId,
       type: 'expense_added_you' as const,
       subject: parsed.data.title,
       expenseId: expense.id,
       groupId: parsed.data.groupId,
+      amountCents: netOnExpense(entry.memberId, parsed.data, resolved.rows),
+      currency,
     })),
   ]);
 
   return { ok: true, data: expense };
+}
+
+/**
+ * What an expense means for one participant, signed the way balances are everywhere
+ * else: **negative = they owe**, positive = they're owed. A non-payer owes their
+ * share; the payer fronted the whole amount, so they're owed everything but their own
+ * share. 0 when they neither owe nor are owed (e.g. they paid and shared it alone).
+ */
+function netOnExpense(
+  memberId: string,
+  data: CreateExpenseInput,
+  rows: Array<{ member_id: string; share_cents: number }>,
+): number {
+  const share = rows.find((row) => row.member_id === memberId)?.share_cents ?? 0;
+  return memberId === data.paidBy ? data.amountCents - share : -share;
 }
 
 /** Update an expense and replace its splits, atomically. */

@@ -65,17 +65,41 @@ export async function getLinkedUserIds(
   memberIds: string[],
   excludeUserId: string,
 ): Promise<string[]> {
+  return (await getLinkedMembers(supabase, memberIds, excludeUserId)).map(
+    (entry) => entry.userId,
+  );
+}
+
+/** A member that belongs to a real account, and which account that is. */
+export interface LinkedMember {
+  memberId: string;
+  userId: string;
+}
+
+/**
+ * Like {@link getLinkedUserIds}, but keeps the member→account pairing. Needed when an
+ * event carries a figure that differs *per recipient* — e.g. telling each participant
+ * what THEY owe on an expense requires knowing which member row is theirs.
+ */
+export async function getLinkedMembers(
+  supabase: Client,
+  memberIds: string[],
+  excludeUserId: string,
+): Promise<LinkedMember[]> {
   if (memberIds.length === 0) return [];
   const { data } = await supabase
     .from('members')
-    .select('linked_user_id')
+    .select('id, linked_user_id')
     .in('id', memberIds)
     .not('linked_user_id', 'is', null);
-  const ids = new Set<string>();
+
+  const seen = new Set<string>();
+  const linked: LinkedMember[] = [];
   for (const row of data ?? []) {
-    if (row.linked_user_id && row.linked_user_id !== excludeUserId) {
-      ids.add(row.linked_user_id);
-    }
+    if (!row.linked_user_id || row.linked_user_id === excludeUserId) continue;
+    if (seen.has(row.linked_user_id)) continue;
+    seen.add(row.linked_user_id);
+    linked.push({ memberId: row.id, userId: row.linked_user_id });
   }
-  return [...ids];
+  return linked;
 }

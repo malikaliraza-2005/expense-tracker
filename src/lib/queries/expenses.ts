@@ -217,7 +217,11 @@ export async function listExpenses(
 
   const supabase = createClient();
 
-  let query = supabase.from('expenses').select('*').eq('owner_id', user.id);
+  // Scoped by RLS, not an owner filter: that's the owner's own expenses PLUS any
+  // shared with them as a participant (0015 `can_see_expense`). An owner-only filter
+  // would hide an expense from the very person who was added to it — and would
+  // disagree with the balance engine's context, which is already RLS-scoped.
+  let query = supabase.from('expenses').select('*');
   if (filter?.groupId) query = query.eq('group_id', filter.groupId);
   if (filter?.categoryId) query = query.eq('category_id', filter.categoryId);
   if (filter?.status === 'outstanding') query = query.is('settled_at', null);

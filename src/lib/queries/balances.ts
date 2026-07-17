@@ -89,11 +89,55 @@ export async function getMemberBalance(memberId: string): Promise<number> {
   return balanceWith(me, memberId, rows);
 }
 
-/** The owner's non-zero net balances within a single group. */
+/**
+ * The member representing the viewer inside `groupId`'s ledger: their self-member when
+ * they own the group, otherwise the group member linked to their account.
+ *
+ * A group lives in its owner's ledger, and a participant appears there as a member
+ * linked to their account — not as their own self-member. Computing a participant's
+ * group balances from their self-member would net an empty set and show zeros, so the
+ * reference point has to follow whose ledger it is.
+ */
+export const getGroupViewerMemberId = cache(
+  async (groupId: string): Promise<string | null> => {
+    const user = await getUser();
+    if (!user) return null;
+
+    const supabase = createClient();
+    const { data: group } = await supabase
+      .from('groups')
+      .select('owner_id')
+      .eq('id', groupId)
+      .maybeSingle();
+    if (!group) return null;
+    if (group.owner_id === user.id) return getSelfMemberId();
+
+    // A participant: find which of the group's members is me.
+    const { data: memberships } = await supabase
+      .from('group_members')
+      .select('member_id')
+      .eq('group_id', groupId);
+    const ids = (memberships ?? []).map((row) => row.member_id);
+    if (ids.length === 0) return null;
+
+    const { data: mine } = await supabase
+      .from('members')
+      .select('id')
+      .in('id', ids)
+      .eq('linked_user_id', user.id)
+      .maybeSingle();
+    return mine?.id ?? null;
+  },
+);
+
+/** The viewer's non-zero net balances within a single group. */
 export async function getGroupBalances(
   groupId: string,
 ): Promise<CounterpartyBalance[]> {
-  const { me, rows } = await getBalanceContext();
+  const [me, { rows }] = await Promise.all([
+    getGroupViewerMemberId(groupId),
+    getBalanceContext(),
+  ]);
   if (!me) return [];
   return groupBalances(me, groupId, rows);
 }

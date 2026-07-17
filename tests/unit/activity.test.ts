@@ -58,7 +58,7 @@ describe('describeActivity', () => {
       'You added “Dinner”',
     );
     expect(describeActivity(ev({ type: 'group_created', subject: 'Trip', actorId: ME }), ME)).toBe(
-      'You created “Trip”',
+      'You created the group “Trip”',
     );
   });
 
@@ -77,7 +77,46 @@ describe('describeActivity', () => {
     ).toBe('Ali added you to “Dinner”');
     expect(
       describeActivity(ev({ type: 'group_removed_you', actorId: OTHER, actorName: 'Ahmed', subject: 'Family' }), ME),
-    ).toBe('Ahmed removed you from “Family”');
+    ).toBe('Ahmed removed you from the group “Family”');
+  });
+
+  it('spells out what an expense means for the reader (negative = they owe)', () => {
+    expect(
+      describeActivity(
+        ev({
+          type: 'expense_added_you', actorId: OTHER, actorName: 'Ali', subject: 'Dinner',
+          amountCents: -125000, currency: 'PKR',
+        }),
+        ME,
+      ),
+    ).toBe('Ali added you to “Dinner” — you owe PKR 1,250');
+  });
+
+  it('tells the payer they are owed, rather than that they owe', () => {
+    expect(
+      describeActivity(
+        ev({
+          type: 'expense_added_you', actorId: OTHER, actorName: 'Ali', subject: 'Cabins',
+          amountCents: 125000, currency: 'PKR',
+        }),
+        ME,
+      ),
+    ).toBe('Ali added you to “Cabins” — you’re owed PKR 1,250');
+  });
+
+  it('omits the figure when there is nothing owed either way', () => {
+    expect(
+      describeActivity(
+        ev({ type: 'expense_added_you', actorId: OTHER, actorName: 'Ali', subject: 'Dinner', amountCents: 0 }),
+        ME,
+      ),
+    ).toBe('Ali added you to “Dinner”');
+  });
+
+  it('names a group add as a group', () => {
+    expect(
+      describeActivity(ev({ type: 'group_added_you', actorId: OTHER, actorName: 'Ali', subject: 'Trip to Naran', expenseId: null, groupId: 'g1' }), ME),
+    ).toBe('Ali added you to the group “Trip to Naran”');
   });
 
   it('formats settlement amounts both directions', () => {
