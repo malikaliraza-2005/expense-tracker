@@ -3,11 +3,14 @@ import { listExpenses } from '@/lib/queries/expenses';
 import type { DashboardData } from '@/types/dto';
 
 /**
- * Dashboard read. Assembles the home overview from the owner's expenses:
- * outstanding vs settled totals, a recent list of outstanding expenses, and a
- * category spend breakdown for the insights donut. All reads are RLS-scoped, so
- * the dashboard only ever reflects the owner's own data. Returns `null` when
- * unauthenticated.
+ * Dashboard read. Assembles the home overview from every expense the user is part of:
+ * outstanding vs settled totals, a recent list of outstanding expenses, and a category
+ * spend breakdown for the insights donut. Returns `null` when unauthenticated.
+ *
+ * Scope note: this reflects expenses the user OWNS **plus** ones shared with them as a
+ * participant — the same RLS-scoped set `listExpenses` returns. An expense someone else
+ * added you to is money you're involved in, so leaving it out of the home totals would
+ * understate what you owe.
  */
 
 /** How many recent outstanding expenses the dashboard surfaces. */

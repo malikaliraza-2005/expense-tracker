@@ -1,12 +1,8 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
-
-import { ArrowLeft } from 'lucide-react';
 
 import { PageHeader } from '@/components/common/page-header';
 import { ExpenseForm } from '@/components/expenses/expense-form';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { listCategories } from '@/lib/queries/categories';
 import { getExpense, getExpenseFormData } from '@/lib/queries/expenses';
@@ -35,13 +31,7 @@ export default async function EditExpensePage({
 
   return (
     <section className="mx-auto max-w-xl space-y-6">
-      <Button asChild variant="ghost" size="sm" className="-ml-2 w-fit">
-        <Link href={`/expenses/${expense.id}`}>
-          <ArrowLeft />
-          Back to expense
-        </Link>
-      </Button>
-
+      {/* No bespoke back link: the app header's back arrow covers every page. */}
       <PageHeader title="Edit expense" description="Update the details or split." />
 
       <Card>

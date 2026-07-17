@@ -28,13 +28,7 @@ export default async function GroupLayout({
 
   return (
     <section className="space-y-6">
-      <Link
-        href={ROUTES.groups}
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        ← All groups
-      </Link>
-
+      {/* No bespoke back link: the app header's back arrow covers every page. */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-2xl font-bold tracking-tight">{group.name}</h1>

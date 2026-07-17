@@ -94,13 +94,7 @@ export default async function ExpenseDetailPage({
 
   return (
     <section className="space-y-6">
-      <Button asChild variant="ghost" size="sm" className="-ml-2 w-fit">
-        <Link href={ROUTES.expenses}>
-          <ArrowLeft />
-          Back to expenses
-        </Link>
-      </Button>
-
+      {/* No bespoke back link: the app header's back arrow covers every page. */}
       <ExpenseDetail
         detail={detail}
         currentUserId={user.id}

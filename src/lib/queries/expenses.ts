@@ -154,30 +154,47 @@ async function fetchMembersById(ids: string[]): Promise<Map<string, Member>> {
 
 /**
  * Shape raw expense rows into list items: join each to its category, payer, and
- * participant count, dropping any whose category or payer can't be read. Shared
- * by the owner's list and the "Shared with me" list.
+ * participant count, dropping any whose category or payer can't be read.
+ *
+ * The rows a caller can see span their own expenses and any shared with them as a
+ * participant (0015), and both are listed together — so each item is marked with
+ * `isOwn`, and a shared one carries `addedByName` (the other account's display name,
+ * read from their self-member) so the UI can say whose it is. Without that the two
+ * would be indistinguishable in one list.
  */
 async function shapeExpenseList(
   expenses: Expense[],
 ): Promise<ExpenseListItem[]> {
   if (expenses.length === 0) return [];
+  const user = await getUser();
   const supabase = createClient();
 
-  // These three reads are independent — run them concurrently rather than in a
+  // Owners other than me — only these need a name resolved.
+  const otherOwnerIds = [
+    ...new Set(
+      expenses
+        .map((expense) => expense.owner_id)
+        .filter((ownerId) => ownerId !== user?.id),
+    ),
+  ];
+
+  // These reads are independent — run them concurrently rather than in a
   // waterfall so the list resolves in one round-trip's worth of latency.
-  const [categoriesById, payersById, { data: splitRows }] = await Promise.all([
-    fetchCategoriesById([
-      ...new Set(expenses.map((expense) => expense.category_id)),
-    ]),
-    fetchMembersById([...new Set(expenses.map((expense) => expense.paid_by))]),
-    supabase
-      .from('expense_splits')
-      .select('expense_id')
-      .in(
-        'expense_id',
-        expenses.map((expense) => expense.id),
-      ),
-  ]);
+  const [categoriesById, payersById, { data: splitRows }, ownerNameById] =
+    await Promise.all([
+      fetchCategoriesById([
+        ...new Set(expenses.map((expense) => expense.category_id)),
+      ]),
+      fetchMembersById([...new Set(expenses.map((expense) => expense.paid_by))]),
+      supabase
+        .from('expense_splits')
+        .select('expense_id')
+        .in(
+          'expense_id',
+          expenses.map((expense) => expense.id),
+        ),
+      fetchOwnerNamesById(otherOwnerIds),
+    ]);
 
   const countByExpense = new Map<string, number>();
   for (const row of splitRows ?? []) {
@@ -192,22 +209,48 @@ async function shapeExpenseList(
     const category = categoriesById.get(expense.category_id);
     const payer = payersById.get(expense.paid_by);
     if (!category || !payer) continue;
+    const isOwn = expense.owner_id === user?.id;
     items.push({
       expense,
       category,
       payer,
       participantCount: countByExpense.get(expense.id) ?? 0,
+      isOwn,
+      addedByName: isOwn ? null : (ownerNameById.get(expense.owner_id) ?? null),
     });
   }
   return items;
 }
 
 /**
- * The owner's own expenses, each joined to its category, payer, and participant
- * count. Sorted by expense date (newest first by default). Explicitly scoped to
- * `owner_id = auth.uid()` so shared expenses (readable since migration 0015) never
- * leak into the owner's own list/dashboard — those surface only via
- * {@link listSharedWithMe}.
+ * Display names for other accounts that own expenses shared with the caller, keyed by
+ * account id. An account's name lives on its self-member, which is readable here
+ * because they share an expense with the caller (0015 `can_see_member`); a name that
+ * can't be read simply degrades to null.
+ */
+async function fetchOwnerNamesById(
+  ownerIds: string[],
+): Promise<Map<string, string>> {
+  if (ownerIds.length === 0) return new Map();
+  const supabase = createClient();
+  const { data } = await supabase
+    .from('members')
+    .select('owner_id, name')
+    .in('owner_id', ownerIds)
+    .eq('is_self', true);
+  return new Map((data ?? []).map((member) => [member.owner_id, member.name]));
+}
+
+/**
+ * Every expense the caller can see — their own PLUS any shared with them as a
+ * participant — each joined to its category, payer, and participant count, and marked
+ * with `isOwn` / `addedByName`. Sorted by expense date (newest first by default).
+ *
+ * Scoping is left to RLS rather than an `owner_id` filter: an owner-only filter would
+ * hide an expense from the very person who was added to it, and would disagree with
+ * the balance engine's context (`getBalanceContext`), which is already RLS-scoped.
+ * Both kinds are listed together and distinguished by their marker, so the caller sees
+ * one coherent list instead of two half-lists.
  */
 export async function listExpenses(
   filter?: ExpenseFilter,
@@ -217,10 +260,6 @@ export async function listExpenses(
 
   const supabase = createClient();
 
-  // Scoped by RLS, not an owner filter: that's the owner's own expenses PLUS any
-  // shared with them as a participant (0015 `can_see_expense`). An owner-only filter
-  // would hide an expense from the very person who was added to it — and would
-  // disagree with the balance engine's context, which is already RLS-scoped.
   let query = supabase.from('expenses').select('*');
   if (filter?.groupId) query = query.eq('group_id', filter.groupId);
   if (filter?.categoryId) query = query.eq('category_id', filter.categoryId);
@@ -271,27 +310,10 @@ export async function listExpenses(
   return shapeExpenseList(expenses);
 }
 
-/**
- * Expenses shared WITH the current user: those they participate in (as payer or
- * split member via their claimed member row) but do NOT own. RLS (migration 0015)
- * already restricts the rows to ones the caller can see; the `neq owner` filter
- * removes their own expenses, leaving exactly the "shared with me" set. Newest
- * first.
- */
-export async function listSharedWithMe(): Promise<ExpenseListItem[]> {
-  const user = await getUser();
-  if (!user) return [];
-
-  const supabase = createClient();
-  const { data: expenses } = await supabase
-    .from('expenses')
-    .select('*')
-    .neq('owner_id', user.id)
-    .order('expense_date', { ascending: false })
-    .order('created_at', { ascending: false });
-
-  return shapeExpenseList((expenses ?? []) as Expense[]);
-}
+// `listSharedWithMe` was removed: shared expenses are no longer a separate list. They
+// come back from `listExpenses` alongside the caller's own (RLS scopes both) and are
+// distinguished by `isOwn` / `addedByName`. Keeping a second list meant the same
+// expense appeared twice on the page once `listExpenses` became RLS-scoped.
 
 /**
  * Full detail for one expense: fields, category, payer, group, and each

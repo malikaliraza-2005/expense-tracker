@@ -9,9 +9,12 @@ import type { ExpenseListItem } from '@/types/dto';
 import { cn } from '@/utils/cn';
 
 /**
- * Expense list (presentational, Phase 4). Each expense is a tappable neon row
- * linking to its detail view — a colour-coded category glyph, the title, meta
- * line (payer · date · people), and the total. Rows lift and glow on hover.
+ * Expense list (presentational). Each expense is a tappable neon row linking to its
+ * detail view — a colour-coded category glyph, the title, meta line (payer · date ·
+ * people), and the total. Rows lift and glow on hover.
+ *
+ * A list can mix the reader's own expenses with ones shared with them, so a shared row
+ * is tagged with who added it — otherwise the two are indistinguishable.
  */
 export function ExpenseList({
   expenses,
@@ -23,7 +26,7 @@ export function ExpenseList({
 }) {
   return (
     <ul className="space-y-2">
-      {expenses.map(({ expense, category, payer, participantCount }) => {
+      {expenses.map(({ expense, category, payer, participantCount, isOwn, addedByName }) => {
         const Icon = categoryIcon(category.icon);
         const color = colorForKey(category.icon || category.name);
         // "You" is the reader's own member: their claimed member (linked_user_id),
@@ -59,6 +62,13 @@ export function ExpenseList({
                     <Check className="h-3.5 w-3.5 shrink-0 text-income" />
                   ) : null}
                   <span className="truncate">{expense.title}</span>
+                  {/* Shared with the reader — say whose it is, or the row is
+                      indistinguishable from their own. */}
+                  {!isOwn && addedByName ? (
+                    <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                      added by {addedByName}
+                    </span>
+                  ) : null}
                 </p>
                 <p className="truncate text-sm text-muted-foreground">
                   {payerName} paid ·{' '}

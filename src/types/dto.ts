@@ -208,6 +208,16 @@ export interface ExpenseListItem {
   payer: Member;
   /** Number of participants (expense_splits rows) on the expense. */
   participantCount: number;
+  /**
+   * True when the viewer owns this expense; false when it was shared with them (they
+   * participate in someone else's). Both appear in one list, so rows must say which.
+   */
+  isOwn: boolean;
+  /**
+   * Who added it, when it isn't the viewer's own — the owning account's display name.
+   * Null for own expenses, or when that name isn't readable.
+   */
+  addedByName: string | null;
 }
 
 /**

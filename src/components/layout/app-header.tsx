@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { Plus } from 'lucide-react';
 
 import { Logo } from '@/components/common/logo';
+import { BackButton } from '@/components/layout/back-button';
 import {
   PRIMARY_NAV,
   badgeLabel,
@@ -40,12 +41,17 @@ export function AppHeader({
   return (
     <header className="glass sticky top-0 z-30 border-x-0 border-t-0">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-        <Link
-          href={ROUTES.dashboard}
-          className="rounded-lg outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <Logo size="sm" />
-        </Link>
+        {/* Back arrow sits ahead of the brand and appears on any non-root page, so
+            every screen has one consistent way back to wherever you came from. */}
+        <div className="flex min-w-0 items-center gap-1">
+          <BackButton pathname={pathname} />
+          <Link
+            href={ROUTES.dashboard}
+            className="rounded-lg outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Logo size="sm" />
+          </Link>
+        </div>
 
         {/* Desktop primary nav */}
         <nav

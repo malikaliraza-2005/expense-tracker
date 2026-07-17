@@ -119,6 +119,12 @@ export function unreadCount(items: ActivityItem[]): number {
  * history.
  */
 export function activityHref(item: ActivityItem): string | null {
+  // Checked BEFORE the ids: these two events are *about losing access*. The group row
+  // still exists, so `groupId` is set and would happily produce a link — but you were
+  // removed from (or left) it, so RLS no longer lets you open it and the page 404s.
+  // Non-clickable history is the honest rendering.
+  if (item.type === 'group_removed_you' || item.type === 'group_left') return null;
+
   if (item.expenseId) return `${ROUTES.expenses}/${item.expenseId}`;
   if (item.groupId) return `${ROUTES.groups}/${item.groupId}`;
 

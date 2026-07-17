@@ -256,6 +256,19 @@ describe('activityHref', () => {
       activityHref(ev({ type: 'expense_deleted', expenseId: null, groupId: null })),
     ).toBeNull();
   });
+
+  it('does not link to a group you can no longer open', () => {
+    // The group row still exists (so groupId is set), but being removed/leaving
+    // revokes read access — linking there would 404 the reader.
+    expect(
+      activityHref(
+        ev({ type: 'group_removed_you', expenseId: null, groupId: 'g1' }),
+      ),
+    ).toBeNull();
+    expect(
+      activityHref(ev({ type: 'group_left', expenseId: null, groupId: 'g1' })),
+    ).toBeNull();
+  });
 });
 
 describe('formatAmount', () => {
