@@ -50,14 +50,14 @@ export default async function GroupOverviewPage({
 
       {/* Your balance within the group */}
       <Card>
-        <CardContent className="grid grid-cols-2 gap-4 py-5">
+        <CardContent className="grid grid-cols-2 items-center gap-4 p-5 sm:p-6">
           <div className="space-y-1">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
               Owed to you
             </p>
             <Money
               cents={summary.owedToMeCents}
-              className="text-xl font-semibold text-emerald-600 dark:text-emerald-500"
+              className="text-xl font-semibold text-income"
             />
           </div>
           <div className="space-y-1">

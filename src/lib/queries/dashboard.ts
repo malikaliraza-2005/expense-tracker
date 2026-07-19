@@ -22,9 +22,11 @@ export async function getDashboard(): Promise<DashboardData | null> {
 
   const expenses = await listExpenses();
 
-  // Partition by the manual settled flag (migration 0011).
-  const outstanding = expenses.filter((e) => !e.expense.settled_at);
-  const settled = expenses.filter((e) => e.expense.settled_at);
+  // Partition by the effective settled state: manually marked (migration 0011) OR
+  // fully covered by payments (migration 0031), so a balance the other account has
+  // paid off drops out of "outstanding" here too.
+  const outstanding = expenses.filter((e) => !e.fullySettled);
+  const settled = expenses.filter((e) => e.fullySettled);
   const outstandingCents = outstanding.reduce(
     (sum, e) => sum + e.expense.amount_cents,
     0,

@@ -39,6 +39,7 @@ import {
 import { categoryIcon } from '@/constants/categories';
 import { ROUTES } from '@/constants/routes';
 import type { ExpenseDetail as ExpenseDetailData } from '@/types/dto';
+import { cn } from '@/utils/cn';
 
 /** A settlement between the owner and a participant, for the delete-payment UI. */
 export interface ExpensePayment {
@@ -97,7 +98,12 @@ export function ExpenseDetail({
   );
   const payerIsMe = isMe(payer);
   const payerName = payerIsMe ? 'You' : payer.name;
-  const settled = Boolean(expense.settled_at);
+  // The status shown to everyone: manually marked settled OR fully covered by
+  // payments (migration 0031), derived from the owner's ledger so it reads the same
+  // on every involved account. The "Mark as settled" control below stays bound to
+  // the manual flag alone — it toggles the override, not the payment-derived state.
+  const settled = detail.fullySettled;
+  const manuallySettled = Boolean(expense.settled_at);
   // Why they owe: the expense's own description, falling back to its title.
   const reason = expense.description?.trim() || expense.title;
 
@@ -137,7 +143,7 @@ export function ExpenseDetail({
         <div className="flex flex-wrap items-center gap-2">
           {isOwner ? (
             <>
-              <SettleToggle expenseId={expense.id} settled={settled} />
+              <SettleToggle expenseId={expense.id} settled={manuallySettled} />
               <Button asChild variant="outline" size="sm">
                 <Link href={`/expenses/${expense.id}/edit`}>
                   <Pencil />
@@ -213,7 +219,7 @@ export function ExpenseDetail({
                 net !== 0;
               return (
                 <li key={member.id} className="space-y-3 py-3 first:pt-0">
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                     <span className="flex min-w-0 items-center gap-2">
                       <Avatar name={member.name} className="h-8 w-8" />
                       <span className="min-w-0">
@@ -231,7 +237,7 @@ export function ExpenseDetail({
                         </span>
                       </span>
                     </span>
-                    <div className="flex shrink-0 items-center gap-1">
+                    <div className="flex shrink-0 flex-wrap items-center gap-1 pl-10 sm:pl-0">
                       {/* Owner-only: invite a not-yet-claimed participant. */}
                       {isOwner && !member.is_self && !member.linked_user_id ? (
                         <Button
@@ -258,6 +264,7 @@ export function ExpenseDetail({
                           memberName={member.name}
                           netCents={net}
                           groupId={expense.group_id}
+                          expenseId={expense.id}
                           className="h-8"
                         />
                       ) : null}
@@ -271,7 +278,7 @@ export function ExpenseDetail({
                     </div>
                   </div>
                   {/* Per-member ledger for this expense: paid / owed / remaining. */}
-                  <dl className="grid grid-cols-3 gap-2 pl-10">
+                  <dl className="grid grid-cols-3 gap-2 pl-0 sm:pl-10">
                     <LedgerStat label="Paid" cents={participant.paidCents} />
                     <LedgerStat label="Owed" cents={participant.owedCents} />
                     <LedgerStat
@@ -374,9 +381,10 @@ function LedgerStat({
       <dd className="mt-0.5">
         <Money
           cents={cents}
-          className={
-            muted ? 'text-sm text-muted-foreground' : 'text-sm font-medium'
-          }
+          className={cn(
+            'block truncate',
+            muted ? 'text-sm text-muted-foreground' : 'text-sm font-medium',
+          )}
         />
       </dd>
     </div>

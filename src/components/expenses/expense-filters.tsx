@@ -121,15 +121,15 @@ export function ExpenseFilters({
         />
       </div>
 
-      {/* Filter row — wraps on small screens. */}
-      <div className="flex flex-wrap items-end gap-3">
+      {/* Filter controls — 2-up grid on phones, inline wrapping row at sm+. */}
+      <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-end">
         <FilterField label="Category" htmlFor="filter-category">
           <Select
             id="filter-category"
             value={categoryId}
             onChange={(event) => setParam('cat', event.target.value)}
             disabled={isPending}
-            className="h-9"
+            className="h-10 sm:h-9"
           >
             <option value="">All categories</option>
             {categories.map((option) => (
@@ -146,7 +146,7 @@ export function ExpenseFilters({
             value={memberId}
             onChange={(event) => setParam('who', event.target.value)}
             disabled={isPending}
-            className="h-9"
+            className="h-10 sm:h-9"
           >
             <option value="">Anyone</option>
             {members.map((option) => (
@@ -163,7 +163,7 @@ export function ExpenseFilters({
             value={status}
             onChange={(event) => setParam('status', event.target.value)}
             disabled={isPending}
-            className="h-9"
+            className="h-10 sm:h-9"
           >
             <option value="all">All</option>
             <option value="outstanding">Outstanding</option>
@@ -199,7 +199,7 @@ export function ExpenseFilters({
             value={sort}
             onChange={(event) => setParam('sort', event.target.value)}
             disabled={isPending}
-            className="h-9 w-36"
+            className="h-10 w-full sm:h-9 sm:w-36"
           >
             <option value="newest">Newest first</option>
             <option value="oldest">Oldest first</option>
@@ -212,7 +212,7 @@ export function ExpenseFilters({
             onClick={clearAll}
             disabled={isPending}
             className={cn(
-              'inline-flex h-9 items-center gap-1 rounded-lg border border-border/60 bg-background/40 px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:border-primary/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring',
+              'col-span-2 inline-flex h-10 items-center justify-center gap-1 rounded-lg border border-border/60 bg-background/40 px-3 text-sm font-medium text-muted-foreground outline-none transition-colors hover:border-primary/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:col-auto sm:h-9',
             )}
           >
             <X className="h-3.5 w-3.5" />
@@ -234,7 +234,7 @@ function FilterField({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-1">
+    <div className="min-w-0 space-y-1">
       <Label
         htmlFor={htmlFor}
         className="text-xs font-medium text-muted-foreground"

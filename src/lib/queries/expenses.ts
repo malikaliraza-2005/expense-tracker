@@ -152,6 +152,44 @@ async function fetchMembersById(ids: string[]): Promise<Map<string, Member>> {
   return new Map((data ?? []).map((member) => [member.id, member]));
 }
 
+/** Payment-derived settlement standing for one expense (migration 0031). */
+interface ExpenseSettlementStatus {
+  /** Fully covered by allocated payments — one input to the effective settled flag. */
+  fullySettled: boolean;
+  /** How much of each debtor's share is settled, keyed by member id. */
+  settledByMember: Record<string, number>;
+}
+
+/**
+ * Aggregate settlement standing for a set of expenses, computed from the OWNER's
+ * complete ledger by the `expense_settlement_status` RPC (migration 0031) so that a
+ * shared participant derives the SAME status the owner sees — including payments made
+ * by a third party they can't see as settlement rows.
+ *
+ * Degrades gracefully: if the RPC isn't present (migration 0031 not yet applied) the
+ * call errors and this returns an empty map, so callers fall back to the manual
+ * `settled_at` flag and nothing breaks.
+ */
+async function fetchSettlementStatus(
+  expenseIds: string[],
+): Promise<Map<string, ExpenseSettlementStatus>> {
+  if (expenseIds.length === 0) return new Map();
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc('expense_settlement_status', {
+    p_expense_ids: expenseIds,
+  });
+  if (error || !data) return new Map();
+  return new Map(
+    data.map((row) => [
+      row.expense_id,
+      {
+        fullySettled: row.fully_settled,
+        settledByMember: row.settled_by_member ?? {},
+      },
+    ]),
+  );
+}
+
 /**
  * Shape raw expense rows into list items: join each to its category, payer, and
  * participant count, dropping any whose category or payer can't be read.
@@ -180,7 +218,7 @@ async function shapeExpenseList(
 
   // These reads are independent — run them concurrently rather than in a
   // waterfall so the list resolves in one round-trip's worth of latency.
-  const [categoriesById, payersById, { data: splitRows }, ownerNameById] =
+  const [categoriesById, payersById, { data: splitRows }, ownerNameById, statusById] =
     await Promise.all([
       fetchCategoriesById([
         ...new Set(expenses.map((expense) => expense.category_id)),
@@ -194,6 +232,9 @@ async function shapeExpenseList(
           expenses.map((expense) => expense.id),
         ),
       fetchOwnerNamesById(otherOwnerIds),
+      // Payment-derived settled state (0031) so a list row reads settled the same on
+      // every account. Empty when the migration isn't applied → manual flag stands.
+      fetchSettlementStatus(expenses.map((expense) => expense.id)),
     ]);
 
   const countByExpense = new Map<string, number>();
@@ -217,6 +258,9 @@ async function shapeExpenseList(
       participantCount: countByExpense.get(expense.id) ?? 0,
       isOwn,
       addedByName: isOwn ? null : (ownerNameById.get(expense.owner_id) ?? null),
+      fullySettled:
+        Boolean(expense.settled_at) ||
+        Boolean(statusById.get(expense.id)?.fullySettled),
     });
   }
   return items;
@@ -361,8 +405,16 @@ export async function getExpense(
   const payer = membersById.get(expense.paid_by);
   if (!payer) return null;
 
+  // Settlement standing from the OWNER's ledger (migration 0031), so a shared
+  // participant sees the same figures — payments made by anyone, on any account,
+  // clear this expense's remaining identically here. Empty when 0031 isn't applied,
+  // in which case the manual settled flag alone drives status (unchanged behaviour).
+  const status = (await fetchSettlementStatus([expenseId])).get(expenseId);
+  const manualSettled = Boolean(expense.settled_at);
+  const fullySettled = manualSettled || Boolean(status?.fullySettled);
+
   // Per-member paid / owed / remaining for this one expense, derived (not stored)
-  // from the split set + the expense's own settled flag (migration 0011).
+  // from the split set, the payments allocated to it (0031), and the manual flag.
   const figures = new Map(
     expenseMemberLedger({
       amountCents: expense.amount_cents,
@@ -371,7 +423,8 @@ export async function getExpense(
         memberId: split.member_id,
         shareCents: split.share_cents,
       })),
-      settled: Boolean(expense.settled_at),
+      settled: manualSettled,
+      settledByMember: status?.settledByMember,
     }).map((figure) => [figure.memberId, figure]),
   );
 
@@ -400,5 +453,6 @@ export async function getExpense(
     group: group ?? null,
     participants,
     splitType,
+    fullySettled,
   };
 }

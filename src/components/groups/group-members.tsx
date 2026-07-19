@@ -156,9 +156,7 @@ function BalanceValue({ netCents }: { netCents: number }) {
       cents={Math.abs(netCents)}
       className={cn(
         'text-sm font-semibold',
-        netCents > 0
-          ? 'text-emerald-600 dark:text-emerald-500'
-          : 'text-destructive',
+        netCents > 0 ? 'text-income' : 'text-expense',
       )}
     />
   );

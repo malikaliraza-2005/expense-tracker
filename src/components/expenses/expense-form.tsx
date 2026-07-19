@@ -475,7 +475,7 @@ export function ExpenseForm({
                   disabled={isPending}
                   aria-pressed={isOn}
                   className={cn(
-                    'inline-flex min-h-11 items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium outline-none transition-all focus-visible:ring-2 focus-visible:ring-ring',
+                    'inline-flex min-h-11 max-w-full items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium outline-none transition-all focus-visible:ring-2 focus-visible:ring-ring',
                     isOn
                       ? 'border-primary bg-primary/15 text-foreground shadow-glow-sm'
                       : 'border-border/60 bg-background/30 text-muted-foreground hover:border-primary/40 hover:text-foreground',

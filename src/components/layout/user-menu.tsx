@@ -38,7 +38,7 @@ export function UserMenu({
         <Avatar
           name={name}
           src={avatarUrl}
-          className="h-9 w-9 ring-primary/40"
+          className="h-10 w-10 ring-primary/40 sm:h-9 sm:w-9"
         />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">

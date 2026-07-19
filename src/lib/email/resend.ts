@@ -54,13 +54,13 @@ function inviteHtml({ inviterName, acceptUrl }: InviteEmailInput): string {
       </p>
       <p style="margin:0 0 24px">
         <a href="${url}"
-           style="display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 20px;border-radius:8px">
+           style="display:inline-block;background:#059669;color:#fff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 20px;border-radius:8px">
           Accept invite
         </a>
       </p>
       <p style="font-size:13px;line-height:1.5;color:#64748b;margin:0">
         Or paste this link into your browser:<br>
-        <a href="${url}" style="color:#4f46e5;word-break:break-all">${url}</a>
+        <a href="${url}" style="color:#047857;word-break:break-all">${url}</a>
       </p>
     </div>
   `;

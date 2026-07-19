@@ -55,7 +55,7 @@ export default async function SharePage({
 
       {!valid ? (
         <Card>
-          <CardContent className="space-y-2 py-10 text-center">
+          <CardContent className="space-y-2 py-10 text-center sm:py-10">
             <p className="font-semibold">This link isn&apos;t active</p>
             <p className="text-sm text-muted-foreground">
               It may have been revoked or never existed. Ask whoever shared it
@@ -93,9 +93,7 @@ export default async function SharePage({
                       </span>
                       <span
                         className={`text-lg font-semibold tabular-nums ${
-                          owes
-                            ? 'text-destructive'
-                            : 'text-emerald-600 dark:text-emerald-500'
+                          owes ? 'text-expense' : 'text-income'
                         }`}
                       >
                         {amount}

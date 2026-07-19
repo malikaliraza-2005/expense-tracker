@@ -226,8 +226,11 @@ function ScopeSection({
   items: ExpenseListItem[];
   currentUserId: string;
 }) {
-  const outstanding = items.filter((item) => !item.expense.settled_at);
-  const settled = items.filter((item) => item.expense.settled_at);
+  // Effective settled state (manual flag OR fully paid off, migration 0031), so a
+  // balance the other account has settled moves into "Settled" and out of the
+  // "to settle" total — matching the green check on each row.
+  const outstanding = items.filter((item) => !item.fullySettled);
+  const settled = items.filter((item) => item.fullySettled);
   const outstandingTotal = outstanding.reduce(
     (sum, item) => sum + item.expense.amount_cents,
     0,

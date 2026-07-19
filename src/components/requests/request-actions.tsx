@@ -53,7 +53,7 @@ export function RequestActions({
         type="button"
         variant="outline"
         size="sm"
-        className="h-8"
+        className="h-9"
         disabled={isPending}
         onClick={() => decide('reject')}
       >
@@ -64,7 +64,7 @@ export function RequestActions({
         type="button"
         variant="gradient"
         size="sm"
-        className="h-8"
+        className="h-9"
         disabled={isPending}
         onClick={() => decide('accept')}
       >

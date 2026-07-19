@@ -26,7 +26,7 @@ export function ExpenseList({
 }) {
   return (
     <ul className="space-y-2">
-      {expenses.map(({ expense, category, payer, participantCount, isOwn, addedByName }) => {
+      {expenses.map(({ expense, category, payer, participantCount, isOwn, addedByName, fullySettled }) => {
         const Icon = categoryIcon(category.icon);
         const color = colorForKey(category.icon || category.name);
         // "You" is the reader's own member: their claimed member (linked_user_id),
@@ -36,7 +36,9 @@ export function ExpenseList({
           (currentUserId != null && payer.linked_user_id === currentUserId) ||
           (expense.owner_id === currentUserId && payer.is_self);
         const payerName = payerIsMe ? 'You' : payer.name;
-        const settled = Boolean(expense.settled_at);
+        // Manual flag OR fully paid off (migration 0031) — reads the same on every
+        // account the expense is shared with.
+        const settled = fullySettled;
         return (
           <li key={expense.id}>
             <Link

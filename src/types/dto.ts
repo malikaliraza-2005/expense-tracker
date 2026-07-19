@@ -121,6 +121,11 @@ export interface ChatMessage {
   body: string;
   /** ISO timestamp, used for ordering. */
   createdAt: string;
+  /**
+   * ISO timestamp set when the sender deleted this message for everyone, else null; the
+   * body is a tombstone once set. Absent on optimistic messages (never deleted yet).
+   */
+  deletedAt?: string | null;
   /** True only for an unconfirmed optimistic message on the sender's client. */
   pending?: boolean;
 }
@@ -139,6 +144,79 @@ export interface ExpenseChatData {
   messages: ChatMessage[];
   /** Display name per sender account id (excludes the current user, shown as "You"). */
   senderNames: Record<string, string>;
+}
+
+/**
+ * One direct message in a DM thread, flattened for the UI. Camel-cased projection of a
+ * `dm_messages` row (keyed by `threadId`). `pending` is a client-only flag for an
+ * optimistic message not yet confirmed by the server; persisted messages never carry it.
+ * The DM counterpart of {@link ChatMessage}.
+ */
+export interface DirectMessage {
+  id: string;
+  /** The DM thread this message belongs to — the isolation key. */
+  threadId: string;
+  /** The sending account (`profiles.id`). */
+  senderId: string;
+  body: string;
+  /** ISO timestamp, used for ordering. */
+  createdAt: string;
+  /**
+   * ISO timestamp set when the sender deleted this message for everyone, else null; the
+   * body is a tombstone once set. Absent on optimistic messages (never deleted yet).
+   */
+  deletedAt?: string | null;
+  /** True only for an unconfirmed optimistic message on the sender's client. */
+  pending?: boolean;
+}
+
+/**
+ * One row in the conversation list: the thread, who it's with (resolved from the
+ * viewer's own roster), a preview of the last message, and the viewer's unread count.
+ * Shaped from a `list_dm_threads()` row by `toDmConversation`.
+ */
+export interface DmConversation {
+  threadId: string;
+  /** The other participant's account id. */
+  otherUserId: string;
+  /** How the viewer knows the other party (roster-relative), or a generic fallback. */
+  otherName: string;
+  /** Body of the most recent message, or null for an empty thread. */
+  lastBody: string | null;
+  /** ISO timestamp of the most recent message (or thread creation), for ordering. */
+  lastAt: string | null;
+  /** True when the viewer sent the last message (drives the "You:" preview prefix). */
+  lastFromMe: boolean;
+  /** Count of the other party's messages newer than the viewer's read watermark. */
+  unreadCount: number;
+}
+
+/**
+ * Everything the DM thread client needs: the thread, the current account, who it's
+ * with, and the messages so far (oldest-first). Returned by `getDmThread`.
+ */
+export interface DmThreadData {
+  threadId: string;
+  /** The current account id — used to align own vs. the other party's messages. */
+  meId: string;
+  otherUserId: string;
+  /** How the viewer knows the other party (roster-relative), or a generic fallback. */
+  otherName: string;
+  messages: DirectMessage[];
+}
+
+/**
+ * A person the current user can start a DM with: a connected account (a member linked
+ * to a real account), flagged with whether a thread already exists so the UI can label
+ * the action "Open" vs "Start". Produced by `getDmCandidates`.
+ */
+export interface DmCandidate {
+  /** The connected account id, passed to `openDmThread`. */
+  userId: string;
+  /** How the current user knows them (their own roster name for the account). */
+  name: string;
+  /** True when a thread with this person already exists. */
+  hasThread: boolean;
 }
 
 /** A group plus lightweight figures for the list card. */
@@ -218,6 +296,13 @@ export interface ExpenseListItem {
    * Null for own expenses, or when that name isn't readable.
    */
   addedByName: string | null;
+  /**
+   * Effective settled state: the manual flag (migration 0011) OR fully covered by
+   * allocated payments (migration 0031). Derived from the owner's ledger so it reads
+   * the same on every involved account. Falls back to the manual flag when the 0031
+   * RPC isn't available.
+   */
+  fullySettled: boolean;
 }
 
 /**
@@ -246,6 +331,13 @@ export interface ExpenseDetail {
   participants: ExpenseParticipant[];
   /** The split type recorded on the splits (uniform across an expense). */
   splitType: SplitType;
+  /**
+   * Effective settled state shown in the header/status: the manual flag (migration
+   * 0011) OR fully covered by allocated payments (migration 0031). Identical on every
+   * involved account, since it's derived from the owner's ledger via the RPC. The
+   * manual "Mark as settled" control still reflects `expense.settled_at` alone.
+   */
+  fullySettled: boolean;
 }
 
 /** A settlement joined to its payer and receiver members, for list/detail. */

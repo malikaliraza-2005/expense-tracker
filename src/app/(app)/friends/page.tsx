@@ -81,7 +81,7 @@ export default async function FriendsPage() {
               return (
                 <li
                   key={member.id}
-                  className="flex items-center justify-between gap-3 py-3 first:pt-0"
+                  className="flex flex-col gap-2 py-3 first:pt-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
                 >
                   <span className="flex min-w-0 items-center gap-3">
                     <Avatar name={member.name} className="h-9 w-9" />
@@ -111,6 +111,7 @@ export default async function FriendsPage() {
                     memberName={member.name}
                     email={member.email}
                     netCents={friend.netCents}
+                    linkedUserId={member.linked_user_id}
                   />
                 </li>
               );

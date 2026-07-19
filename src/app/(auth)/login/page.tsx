@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
+import { AuthDivider } from '@/components/auth/auth-divider';
+import { GoogleAuthButton } from '@/components/auth/google-auth-button';
 import { LoginForm } from '@/components/auth/login-form';
 import {
   Card,
@@ -41,8 +43,10 @@ export default function LoginPage({
           <CardTitle className="text-xl">Log in</CardTitle>
           <CardDescription>Enter your details to continue.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <LoginForm next={next} />
+          <AuthDivider />
+          <GoogleAuthButton label="Log in with Google" />
         </CardContent>
         <CardFooter className="justify-center text-sm text-muted-foreground">
           <span>

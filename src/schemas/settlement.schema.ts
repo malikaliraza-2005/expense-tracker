@@ -21,6 +21,7 @@ export interface RecordSettlementFormInput {
   receiverId?: unknown;
   amountCents?: unknown;
   note?: unknown;
+  expenseId?: unknown;
   /** Optional group the settlement belongs to (scopes it to that ledger). */
   groupId?: unknown;
 }
@@ -30,6 +31,7 @@ export interface RecordSettlementInput {
   receiverId: string;
   amountCents: number;
   note: string | null;
+  expenseId: string | null;
   /** The group this settlement is scoped to, or null for general activity. */
   groupId: string | null;
 }
@@ -47,6 +49,7 @@ export function validateRecordSettlement(
   const amountCents =
     typeof input.amountCents === 'number' ? input.amountCents : NaN;
   const note = asString(input.note).trim();
+  const expenseIdRaw = asString(input.expenseId).trim();
   const groupIdRaw = asString(input.groupId).trim();
 
   const errors: Partial<Record<keyof RecordSettlementInput, string>> = {};
@@ -64,6 +67,9 @@ export function validateRecordSettlement(
   if (note.length > SETTLEMENT_NOTE_MAX_LENGTH) {
     errors.note = `Note must be at most ${SETTLEMENT_NOTE_MAX_LENGTH} characters.`;
   }
+  if (expenseIdRaw && !UUID_RE.test(expenseIdRaw)) {
+    errors.expenseId = 'Invalid expense.';
+  }
   // A group id, when present, must be a well-formed uuid; absent means general.
   if (groupIdRaw && !UUID_RE.test(groupIdRaw)) {
     errors.groupId = 'Invalid group.';
@@ -77,6 +83,7 @@ export function validateRecordSettlement(
       receiverId,
       amountCents,
       note: note || null,
+      expenseId: expenseIdRaw || null,
       groupId: groupIdRaw || null,
     },
   };

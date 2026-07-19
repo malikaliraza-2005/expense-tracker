@@ -75,7 +75,7 @@ function NavTab({
     <Link
       href={item.href}
       aria-current={active ? 'page' : undefined}
-      className="group relative flex flex-1 flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       {active && (
         <span className="absolute inset-0 -z-10 rounded-xl bg-primary/12 ring-1 ring-inset ring-primary/25" />
@@ -100,7 +100,7 @@ function NavTab({
       </span>
       <span
         className={cn(
-          'text-[10px] font-medium tracking-tight transition-colors',
+          'w-full truncate text-center text-[10px] font-medium tracking-tight transition-colors',
           active ? 'text-primary' : 'text-muted-foreground',
         )}
       >

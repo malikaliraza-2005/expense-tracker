@@ -47,7 +47,7 @@ export default async function GroupBalancesPage({
                   key={`${entry.from.id}-${entry.to.id}`}
                   className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/50 bg-background/30 p-3"
                 >
-                  <span className="flex min-w-0 items-center gap-2 text-sm">
+                  <span className="flex min-w-0 basis-full items-center gap-2 text-sm sm:basis-auto">
                     <Avatar name={entry.from.name} className="h-7 w-7" />
                     <span className="truncate font-medium">{fromName}</span>
                     <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />

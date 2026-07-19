@@ -242,4 +242,59 @@ describe('expenseMemberLedger (per-expense paid / owed / remaining)', () => {
       { memberId: 'b', paidCents: 0, owedCents: 40, remainingCents: 40 },
     ]);
   });
+
+  // Payment-derived allocation (migration 0031): a settled amount per debtor reduces
+  // that debtor's remaining and, in turn, the payer's — the same figures on every
+  // account, since they come from the owner's ledger via the RPC.
+  it('reduces a debtor’s and the payer’s remaining by an allocated payment', () => {
+    const ledger = expenseMemberLedger({
+      amountCents: 90,
+      payerId: 'me',
+      splits,
+      settled: false,
+      settledByMember: { a: 30, b: 10 }, // a fully paid, b partly
+    });
+    expect(ledger).toEqual([
+      { memberId: 'me', paidCents: 90, owedCents: 30, remainingCents: 20 }, // 0 + 20
+      { memberId: 'a', paidCents: 0, owedCents: 30, remainingCents: 0 },
+      { memberId: 'b', paidCents: 0, owedCents: 30, remainingCents: 20 },
+    ]);
+  });
+
+  it('clamps an over-allocation to the debtor’s share and never goes negative', () => {
+    const ledger = expenseMemberLedger({
+      amountCents: 90,
+      payerId: 'me',
+      splits,
+      settled: false,
+      settledByMember: { a: 999 }, // more than a's 30 share
+    });
+    const a = ledger.find((f) => f.memberId === 'a')!;
+    const payer = ledger.find((f) => f.memberId === 'me')!;
+    expect(a.remainingCents).toBe(0);
+    expect(payer.remainingCents).toBe(30); // only b's 30 left
+  });
+
+  it('lets the manual settled flag override any partial allocation', () => {
+    const ledger = expenseMemberLedger({
+      amountCents: 90,
+      payerId: 'me',
+      splits,
+      settled: true,
+      settledByMember: { a: 10 },
+    });
+    expect(ledger.every((f) => f.remainingCents === 0)).toBe(true);
+  });
+
+  it('ignores an allocation entry for the payer’s own share', () => {
+    const ledger = expenseMemberLedger({
+      amountCents: 90,
+      payerId: 'me',
+      splits,
+      settled: false,
+      settledByMember: { me: 30 }, // payer doesn't owe themselves
+    });
+    // Others untouched → payer still owed both 30s.
+    expect(ledger.find((f) => f.memberId === 'me')!.remainingCents).toBe(60);
+  });
 });

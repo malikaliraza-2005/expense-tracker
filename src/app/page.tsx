@@ -72,10 +72,12 @@ export default async function LandingPage() {
 
       {/* Top navigation */}
       <header className="glass sticky top-0 z-20 border-x-0 border-t-0">
-        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4 sm:px-6">
-          <Logo size="sm" />
-          <div className="flex items-center gap-1 sm:gap-2">
-            <ThemeToggle />
+        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-2 px-4 sm:px-6">
+          <Logo size="sm" className="min-w-0" />
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+            <div className="hidden sm:block">
+              <ThemeToggle />
+            </div>
             <Button asChild variant="ghost" size="sm">
               <Link href={ROUTES.login}>Log in</Link>
             </Button>
@@ -99,7 +101,7 @@ export default async function LandingPage() {
             </span>
 
             <h1
-              className="mt-6 animate-fade-in-up text-4xl font-bold leading-[1.05] tracking-tight sm:text-6xl"
+              className="mt-6 animate-fade-in-up text-3xl font-bold leading-[1.1] tracking-tight sm:text-5xl lg:text-6xl"
               style={{ animationDelay: '80ms' }}
             >
               Shared expenses,{' '}
@@ -165,7 +167,7 @@ export default async function LandingPage() {
 
         {/* Closing call-to-action */}
         <section className="pb-24">
-          <div className="relative overflow-hidden rounded-3xl border border-primary/20 bg-gradient-neon p-10 text-center text-white shadow-glow sm:p-16">
+          <div className="relative overflow-hidden rounded-3xl border border-primary/20 bg-gradient-neon p-6 text-center text-white shadow-glow sm:p-16">
             <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-white/20 blur-3xl" />
             <div className="pointer-events-none absolute -bottom-24 -left-16 h-64 w-64 rounded-full bg-cyan/40 blur-3xl" />
             <div className="relative flex flex-col items-center gap-5">

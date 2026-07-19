@@ -37,6 +37,12 @@ export type Settlement = Tables<'settlements'>;
 export type Invitation = Tables<'invitations'>;
 /** Migration 0017 — a text/emoji message in one expense's isolated chat thread. */
 export type Message = Tables<'messages'>;
+/** Migration 0029 — a one-to-one DM conversation between two connected accounts. */
+export type DmThread = Tables<'dm_threads'>;
+/** Migration 0029 — a text/emoji message in a DM thread (keyed by thread_id). */
+export type DmMessage = Tables<'dm_messages'>;
+/** Migration 0029 — one account's read watermark in one DM thread. */
+export type DmRead = Tables<'dm_reads'>;
 /** Migration 0018 — one event in a user's activity feed. */
 export type ActivityEvent = Tables<'activity_events'>;
 /** The discrete activity event kinds recorded in the feed (stored as text). */

@@ -23,6 +23,10 @@ export const ROUTES = {
   groups: '/groups',
   /** Activity feed — chronological history of everything involving the user. */
   activity: '/activity',
+  /** Direct messages — the one-to-one conversation list (migration 0029). */
+  messages: '/messages',
+  /** A single DM conversation; append `/<threadId>`. */
+  messageThread: '/messages',
   // Retired in Phase 2 — redirects to /expenses (see next.config.mjs). Kept as a
   // constant so the redirect source and any lingering references resolve.
   members: '/members',

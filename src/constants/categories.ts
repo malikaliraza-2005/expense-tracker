@@ -35,20 +35,23 @@ export function categoryIcon(slug: string | null | undefined): LucideIcon {
 }
 
 /**
- * Neon accent palette for charts/glyphs. Categories have no colour column, so we
- * derive a stable colour from a string key (icon slug or name) — the same
- * category always maps to the same neon token, keeping charts and lists in sync.
+ * Categorical chart palette — an emerald-led, fixed hue order (defined as
+ * --chart-1..6 in globals.css, one validated set per theme; see the dataviz
+ * skill). Assign by index in the fixed order, never cycled: charts draw
+ * segments/bars as CHART_COLORS[i]; list glyphs derive a stable per-category
+ * tint from `colorForKey` (each glyph also carries an icon + text label, so the
+ * tint is a secondary cue, not the sole identity channel).
  */
 export const CHART_COLORS = [
-  'hsl(var(--primary))',
-  'hsl(var(--purple))',
-  'hsl(var(--cyan))',
-  'hsl(var(--income))',
-  'hsl(var(--warning))',
-  'hsl(var(--expense))',
+  'var(--chart-1)',
+  'var(--chart-2)',
+  'var(--chart-3)',
+  'var(--chart-4)',
+  'var(--chart-5)',
+  'var(--chart-6)',
 ] as const;
 
-/** Deterministically map any key to one of the neon chart colours. */
+/** Deterministically map any key to one of the categorical chart colours. */
 export function colorForKey(key: string): string {
   let hash = 0;
   for (let i = 0; i < key.length; i += 1) {

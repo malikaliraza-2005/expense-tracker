@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-import { Plus } from 'lucide-react';
+import { MessagesSquare, Plus } from 'lucide-react';
 
 import { Logo } from '@/components/common/logo';
 import { BackButton } from '@/components/layout/back-button';
@@ -31,12 +31,16 @@ export function AppHeader({
   name,
   avatarUrl,
   badges,
+  messagesUnread = 0,
 }: {
   name: string | null;
   avatarUrl: string | null;
   badges?: NavBadges;
+  /** Unread direct-message count, shown as a badge on the inbox icon. */
+  messagesUnread?: number;
 }) {
   const pathname = usePathname();
+  const messagesActive = isActiveRoute(pathname, ROUTES.messages);
 
   return (
     <header className="glass sticky top-0 z-30 border-x-0 border-t-0">
@@ -47,7 +51,7 @@ export function AppHeader({
           <BackButton pathname={pathname} />
           <Link
             href={ROUTES.dashboard}
-            className="rounded-lg outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"
+            className="min-w-0 rounded-lg outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"
           >
             <Logo size="sm" />
           </Link>
@@ -99,6 +103,33 @@ export function AppHeader({
               Add expense
             </Link>
           </Button>
+
+          {/* Direct-message inbox — sits beside the account avatar on every screen.
+              Its badge shows the unread-message count (omitted when zero). */}
+          <Link
+            href={ROUTES.messages}
+            aria-label={
+              messagesUnread > 0
+                ? `Messages, ${messagesUnread} unread`
+                : 'Messages'
+            }
+            aria-current={messagesActive ? 'page' : undefined}
+            className={cn(
+              'relative flex h-10 w-10 items-center justify-center rounded-full outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:h-9 sm:w-9',
+              messagesActive ? 'text-primary' : 'text-muted-foreground',
+            )}
+          >
+            <MessagesSquare className="h-5 w-5" />
+            {messagesUnread > 0 ? (
+              <span
+                aria-hidden="true"
+                className="absolute -right-0.5 -top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-white shadow-glow-sm"
+              >
+                {badgeLabel(messagesUnread)}
+              </span>
+            ) : null}
+          </Link>
+
           <UserMenu name={name} avatarUrl={avatarUrl} />
         </div>
       </div>

@@ -111,11 +111,13 @@ const ICONS: Record<ActivityCategory, LucideIcon> = {
   balance: Scale,
 };
 
+// Every tint is one of the scheme's approved accents; the distinct per-category
+// icon carries identity where a hue is reused.
 const ACCENT: Record<ActivityCategory, string> = {
   expense: 'bg-primary/12 text-primary',
-  group: 'bg-sky-500/12 text-sky-500',
-  settlement: 'bg-emerald-500/12 text-emerald-500',
-  friend: 'bg-violet-500/12 text-violet-500',
-  chat: 'bg-pink-500/12 text-pink-500',
-  balance: 'bg-amber-500/12 text-amber-500',
+  group: 'bg-info/12 text-info',
+  settlement: 'bg-income/12 text-income',
+  friend: 'bg-primary/12 text-primary',
+  chat: 'bg-info/12 text-info',
+  balance: 'bg-warning/12 text-warning',
 };

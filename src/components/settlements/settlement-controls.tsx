@@ -37,6 +37,7 @@ export function SettleUpDialog({
   memberName,
   netCents,
   groupId,
+  expenseId,
   className,
 }: {
   selfMemberId: string;
@@ -46,6 +47,7 @@ export function SettleUpDialog({
   netCents: number;
   /** When set, the payment is recorded against this group's ledger only. */
   groupId?: string | null;
+  expenseId?: string | null;
   className?: string;
 }) {
   const router = useRouter();
@@ -90,6 +92,7 @@ export function SettleUpDialog({
         receiverId,
         amountCents,
         note: null,
+        expenseId: expenseId ?? null,
         groupId: groupId ?? null,
       });
       if (!result.ok) {
@@ -330,7 +333,7 @@ export function DeleteSettlementButton({
         <button
           type="button"
           aria-label={`Remove payment: ${label}`}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground/70 outline-none transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring [&_svg]:h-4 [&_svg]:w-4"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground/70 outline-none transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:ring-2 focus-visible:ring-ring [&_svg]:h-4 [&_svg]:w-4"
         >
           <Trash2 />
         </button>

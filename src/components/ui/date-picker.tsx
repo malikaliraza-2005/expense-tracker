@@ -327,7 +327,7 @@ export function DatePicker({
         disabled={disabled}
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'flex h-9 w-[10.5rem] items-center gap-2 rounded-lg border border-input bg-background/60 px-3 text-left text-sm shadow-inner-top backdrop-blur-sm transition-all duration-200 hover:border-primary/40 focus-visible:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50',
+          'flex h-10 w-full items-center gap-2 rounded-lg border border-input bg-background/60 px-3 text-left text-sm shadow-inner-top backdrop-blur-sm transition-all duration-200 hover:border-primary/40 focus-visible:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50 sm:h-9 sm:w-[10.5rem]',
         )}
       >
         <Calendar className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -355,7 +355,7 @@ export function DatePicker({
                 onChange('');
               }
             }}
-            className="inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&_svg]:h-3.5 [&_svg]:w-3.5"
+            className="-mr-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&_svg]:h-3.5 [&_svg]:w-3.5"
           >
             <X />
           </span>

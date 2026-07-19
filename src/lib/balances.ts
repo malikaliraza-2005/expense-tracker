@@ -85,6 +85,15 @@ export interface ExpenseLedgerInput {
   splits: ReadonlyArray<{ memberId: string; shareCents: number }>;
   /** The expense's manual settled flag (migration 0011). Zeroes remaining. */
   settled: boolean;
+  /**
+   * Payment-derived amount settled per DEBTOR member on THIS expense, keyed by
+   * member id (migration 0031's oldest-first allocation of the settlement ledger).
+   * A member's still-owed share is reduced by their allocated amount; absent = 0.
+   * This is what lets a recorded payment — from either account, including a
+   * third-party payment the viewer can't see — clear the expense's remaining
+   * identically on every involved account. The manual `settled` flag overrides it.
+   */
+  settledByMember?: Readonly<Record<string, number>>;
 }
 
 /**
@@ -92,22 +101,38 @@ export interface ExpenseLedgerInput {
  *
  * Single-payer, equal-split model: the payer fronts the whole total (`paidCents`
  * = amount) while everyone else fronts nothing; each participant owes their
- * `shareCents`. Outstanding follows the expense's own settled flag — nil when
- * settled, otherwise the payer is still owed the sum of the other shares
- * (`amount − own share`) and each other participant still owes their share. The
- * payer's remaining therefore equals the sum of the others', by construction.
+ * `shareCents`. Outstanding is reduced by any payments allocated to this expense
+ * (`settledByMember`) and forced to nil by the manual settled flag: a non-payer
+ * still owes their share minus what they've paid toward it, and the payer is owed
+ * back the sum of the others' still-remaining shares — so the payer's remaining
+ * equals the sum of the others', by construction.
  */
 export function expenseMemberLedger(
   input: ExpenseLedgerInput,
 ): ExpenseMemberFigure[] {
+  const alloc = input.settledByMember ?? {};
+  // A non-payer's still-owed amount: their share less what's been paid toward it
+  // (clamped into [0, share]); nil once the expense is manually settled.
+  const remainingForDebtor = (memberId: string, shareCents: number): number => {
+    if (input.settled) return 0;
+    const paid = Math.min(Math.max(alloc[memberId] ?? 0, 0), shareCents);
+    return shareCents - paid;
+  };
+  // The payer is owed back whatever the other participants still owe.
+  const payerRemaining = input.splits.reduce(
+    (sum, s) =>
+      s.memberId === input.payerId
+        ? sum
+        : sum + remainingForDebtor(s.memberId, s.shareCents),
+    0,
+  );
+
   return input.splits.map(({ memberId, shareCents }) => {
     const isPayer = memberId === input.payerId;
     const paidCents = isPayer ? input.amountCents : 0;
-    const remainingCents = input.settled
-      ? 0
-      : isPayer
-        ? input.amountCents - shareCents
-        : shareCents;
+    const remainingCents = isPayer
+      ? payerRemaining
+      : remainingForDebtor(memberId, shareCents);
     return { memberId, paidCents, owedCents: shareCents, remainingCents };
   });
 }

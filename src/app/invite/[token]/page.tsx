@@ -66,7 +66,7 @@ export default async function InvitePage({
     return (
       <InviteShell>
         <Card>
-          <CardContent className="space-y-2 py-10 text-center">
+          <CardContent className="space-y-2 py-10 text-center sm:py-10">
             <p className="font-semibold">We couldn’t accept this invite</p>
             <p className="text-sm text-muted-foreground">
               This invite isn’t valid anymore. Ask for a new one.
@@ -85,7 +85,7 @@ export default async function InvitePage({
     return (
       <InviteShell>
         <Card>
-          <CardContent className="space-y-2 py-10 text-center">
+          <CardContent className="space-y-2 py-10 text-center sm:py-10">
             <p className="font-semibold">This invite isn’t active</p>
             <p className="text-sm text-muted-foreground">
               {invite?.status === 'accepted'

@@ -20,8 +20,8 @@ export default function manifest(): MetadataRoute.Manifest {
     lang: 'en',
     dir: 'ltr',
     categories: ['finance', 'productivity'],
-    background_color: '#ffffff',
-    theme_color: '#0f172a',
+    background_color: '#0B0B0C',
+    theme_color: '#0B0B0C',
     icons: [
       {
         src: '/icons/icon-192.png',

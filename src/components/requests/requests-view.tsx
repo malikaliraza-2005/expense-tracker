@@ -53,7 +53,7 @@ export function RequestsView({ items }: { items: RequestItem[] }) {
       >
         {visible.length === 0 ? (
           <Card>
-            <CardContent className="py-10 text-center text-sm text-muted-foreground">
+            <CardContent className="py-10 text-center text-sm text-muted-foreground sm:py-10">
               {emptyMessage(tab)}
             </CardContent>
           </Card>
@@ -76,7 +76,7 @@ export function RequestsView({ items }: { items: RequestItem[] }) {
 /** One request row: who it's with, what it is, and its status or actions. */
 function RequestRow({ item }: { item: RequestItem }) {
   return (
-    <li className="flex items-center justify-between gap-3 py-3 first:pt-0">
+    <li className="flex flex-col gap-2 py-3 first:pt-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
       <span className="flex min-w-0 items-center gap-3">
         <Avatar name={item.counterpartyName} className="h-9 w-9" />
         <span className="min-w-0">

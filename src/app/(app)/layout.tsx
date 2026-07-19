@@ -3,10 +3,13 @@ import { BottomNav } from '@/components/layout/bottom-nav';
 import type { NavBadges } from '@/components/layout/nav-config';
 import { DecorativeBackground } from '@/components/common/decorative-background';
 import { CurrencyProvider } from '@/components/providers/currency-provider';
+import { DmRealtime } from '@/components/messages/dm-realtime';
 import { RealtimeSync } from '@/components/providers/realtime-sync';
 import { ROUTES } from '@/constants/routes';
 import { requireUser } from '@/lib/auth';
+import { totalUnread } from '@/lib/dm';
 import { getUnreadActivityCount } from '@/lib/queries/activity';
+import { getConversations } from '@/lib/queries/dm';
 import { getCurrentProfile } from '@/lib/queries/profile';
 import { getReceivedActionableCount } from '@/lib/queries/requests';
 
@@ -24,13 +27,16 @@ export default async function AppLayout({
   children: React.ReactNode;
 }>) {
   await requireUser();
-  const [profile, requestsCount, activityCount] = await Promise.all([
-    getCurrentProfile(),
-    getReceivedActionableCount(),
-    getUnreadActivityCount(),
-  ]);
+  const [profile, requestsCount, activityCount, conversations] =
+    await Promise.all([
+      getCurrentProfile(),
+      getReceivedActionableCount(),
+      getUnreadActivityCount(),
+      getConversations(),
+    ]);
   const name = profile?.full_name || null;
   const avatarUrl = profile?.avatar_url ?? null;
+  const messagesUnread = totalUnread(conversations);
 
   // Overlay nav-item counts: actionable-received on Requests, unread on Activity
   // (each omitted when 0).
@@ -42,9 +48,15 @@ export default async function AppLayout({
   return (
     <CurrencyProvider initialCurrency={profile?.preferred_currency}>
       <RealtimeSync />
+      <DmRealtime />
       <div className="relative min-h-screen">
         <DecorativeBackground />
-        <AppHeader name={name} avatarUrl={avatarUrl} badges={badges} />
+        <AppHeader
+          name={name}
+          avatarUrl={avatarUrl}
+          badges={badges}
+          messagesUnread={messagesUnread}
+        />
         <main className="mx-auto max-w-6xl px-4 py-6 pb-safe-nav sm:px-6 md:pb-10">
           {children}
         </main>

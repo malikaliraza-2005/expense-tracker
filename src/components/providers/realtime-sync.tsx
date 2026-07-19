@@ -48,6 +48,14 @@ export function RealtimeSync() {
       timer = setTimeout(() => router.refresh(), DEBOUNCE_MS);
     };
 
+    // `activity_events` covers many notification types; a chat message is the one that
+    // must NOT force a route refresh (the chat is already live), so it's filtered out
+    // by row type. Everything else on this table refreshes as before.
+    const onActivityChange = (payload: { new?: { type?: string } | null }) => {
+      if (payload.new?.type === 'chat_message') return;
+      scheduleRefresh();
+    };
+
     (async () => {
       const {
         data: { session },
@@ -60,7 +68,12 @@ export function RealtimeSync() {
         channelBuilder = channelBuilder.on(
           'postgres_changes',
           { event: '*', schema: 'public', table },
-          scheduleRefresh,
+          // Chat notifications ride `activity_events` too, but every chat surface
+          // already updates itself over its own live channel. Letting a chat message
+          // trigger a whole-route `router.refresh()` would reload the page mid-
+          // conversation for everyone else in the thread — so those are skipped here;
+          // the unread badge catches up on the next navigation.
+          table === 'activity_events' ? onActivityChange : scheduleRefresh,
         );
       }
       channel = channelBuilder.subscribe();

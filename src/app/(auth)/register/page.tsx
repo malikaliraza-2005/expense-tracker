@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
+import { AuthDivider } from '@/components/auth/auth-divider';
+import { GoogleAuthButton } from '@/components/auth/google-auth-button';
 import { RegisterForm } from '@/components/auth/register-form';
 import {
   Card,
@@ -56,8 +58,10 @@ export default function RegisterPage({
           <CardTitle className="text-xl">Create account</CardTitle>
           <CardDescription>Just a few details to get started.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <RegisterForm defaultEmail={defaultEmail} next={next} />
+          <AuthDivider />
+          <GoogleAuthButton label="Sign up with Google" />
         </CardContent>
         <CardFooter className="justify-center text-sm text-muted-foreground">
           <span>

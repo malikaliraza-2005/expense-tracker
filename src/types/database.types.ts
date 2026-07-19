@@ -469,6 +469,8 @@ export interface Database {
           sender_id: string;
           body: string;
           created_at: string;
+          // Migration 0032 — set when the sender deleted this message for everyone.
+          deleted_at: string | null;
         };
         Insert: {
           id?: string;
@@ -476,6 +478,7 @@ export interface Database {
           sender_id: string;
           body: string;
           created_at?: string;
+          deleted_at?: string | null;
         };
         Update: {
           id?: string;
@@ -483,6 +486,7 @@ export interface Database {
           sender_id?: string;
           body?: string;
           created_at?: string;
+          deleted_at?: string | null;
         };
         Relationships: [
           {
@@ -564,6 +568,184 @@ export interface Database {
           {
             foreignKeyName: 'activity_events_actor_id_fkey';
             columns: ['actor_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      // Migration 0029 — one row per PAIR of connected accounts (user_a < user_b),
+      // the container for a one-to-one direct-message conversation. Rows are created
+      // only via get_or_create_dm_thread.
+      dm_threads: {
+        Row: {
+          id: string;
+          user_a: string;
+          user_b: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_a: string;
+          user_b: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_a?: string;
+          user_b?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'dm_threads_user_a_fkey';
+            columns: ['user_a'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'dm_threads_user_b_fkey';
+            columns: ['user_b'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      // Migration 0029 — one message in a DM thread. Mirrors public.messages: body is
+      // plain text 1-2000 chars, sender is an account (profiles.id), immutable once sent.
+      dm_messages: {
+        Row: {
+          id: string;
+          thread_id: string;
+          sender_id: string;
+          body: string;
+          created_at: string;
+          // Migration 0032 — set when the sender deleted this message for everyone.
+          deleted_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          thread_id: string;
+          sender_id: string;
+          body: string;
+          created_at?: string;
+          deleted_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          thread_id?: string;
+          sender_id?: string;
+          body?: string;
+          created_at?: string;
+          deleted_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'dm_messages_thread_id_fkey';
+            columns: ['thread_id'];
+            referencedRelation: 'dm_threads';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'dm_messages_sender_id_fkey';
+            columns: ['sender_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      // Migration 0029 — how far one account has read in one DM thread. Unread =
+      // messages from the OTHER party newer than last_read_at.
+      dm_reads: {
+        Row: {
+          thread_id: string;
+          user_id: string;
+          last_read_at: string;
+        };
+        Insert: {
+          thread_id: string;
+          user_id: string;
+          last_read_at?: string;
+        };
+        Update: {
+          thread_id?: string;
+          user_id?: string;
+          last_read_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'dm_reads_thread_id_fkey';
+            columns: ['thread_id'];
+            referencedRelation: 'dm_threads';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'dm_reads_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      // Migration 0032 — a per-user "delete for me" on a per-expense chat message: the
+      // message is hidden from that user's view only (never mutated, never shared).
+      message_deletions: {
+        Row: {
+          message_id: string;
+          user_id: string;
+          created_at: string;
+        };
+        Insert: {
+          message_id: string;
+          user_id: string;
+          created_at?: string;
+        };
+        Update: {
+          message_id?: string;
+          user_id?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'message_deletions_message_id_fkey';
+            columns: ['message_id'];
+            referencedRelation: 'messages';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'message_deletions_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      // Migration 0032 — a per-user "delete for me" on a DM message.
+      dm_message_deletions: {
+        Row: {
+          message_id: string;
+          user_id: string;
+          created_at: string;
+        };
+        Insert: {
+          message_id: string;
+          user_id: string;
+          created_at?: string;
+        };
+        Update: {
+          message_id?: string;
+          user_id?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'dm_message_deletions_message_id_fkey';
+            columns: ['message_id'];
+            referencedRelation: 'dm_messages';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'dm_message_deletions_user_id_fkey';
+            columns: ['user_id'];
             referencedRelation: 'profiles';
             referencedColumns: ['id'];
           },
@@ -701,6 +883,71 @@ export interface Database {
           p_group_id?: string | null;
         };
         Returns: string | null;
+      };
+      // Migration 0031 — aggregate settlement standing (owed/settled/remaining +
+      // per-debtor settled map) for each VISIBLE expense in `p_expense_ids`, computed
+      // from the OWNER's complete ledger. Lets a shared participant derive the SAME
+      // status the owner sees without exposing individual settlement rows. Rows the
+      // caller can't see are silently dropped. `settled_by_member` maps a debtor's
+      // member id to how much of THEIR share is settled.
+      expense_settlement_status: {
+        Args: { p_expense_ids: string[] };
+        Returns: {
+          expense_id: string;
+          owed_cents: number;
+          settled_cents: number;
+          remaining_cents: number;
+          fully_settled: boolean;
+          settled_by_member: Record<string, number>;
+        }[];
+      };
+      // Migration 0029 — true when the CALLER and p_other are linked by a members row
+      // either direction. Single-argument: the caller comes from auth.uid().
+      is_connected_to: {
+        Args: { p_other: string };
+        Returns: boolean;
+      };
+      // Migration 0029 — true when the caller is one of the two accounts on this DM
+      // thread. The gate behind every dm_messages/dm_reads policy.
+      can_access_dm_thread: {
+        Args: { p_thread: string };
+        Returns: boolean;
+      };
+      // Migration 0029 — the id of the caller's DM thread with p_other, creating it on
+      // first use. Null when not signed in, self, or the two aren't connected.
+      get_or_create_dm_thread: {
+        Args: { p_other: string };
+        Returns: string | null;
+      };
+      // Migration 0029 — the caller's DM threads, newest-activity first, each with its
+      // last message and unread count. RLS-scoped (SECURITY INVOKER).
+      list_dm_threads: {
+        Args: Record<string, never>;
+        Returns: {
+          thread_id: string;
+          other_user_id: string;
+          last_body: string | null;
+          last_at: string | null;
+          last_sender_id: string | null;
+          unread_count: number;
+        }[];
+      };
+      // Migration 0030 — true when the caller may take part in the typing channel
+      // p_topic names (dm-typing:<id> / expense-typing:<id>). Fails closed.
+      can_receive_typing: {
+        Args: { p_topic: string };
+        Returns: boolean;
+      };
+      // Migration 0032 — retract a per-expense chat message for everyone (sender only);
+      // soft-deletes + tombstones the body. True when a live own message was retracted.
+      delete_expense_message_for_everyone: {
+        Args: { p_message: string };
+        Returns: boolean;
+      };
+      // Migration 0032 — retract a DM message for both participants (sender only).
+      delete_dm_message_for_everyone: {
+        Args: { p_message: string };
+        Returns: boolean;
       };
     };
     Enums: {

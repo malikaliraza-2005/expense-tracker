@@ -2,6 +2,9 @@
 
 import { revalidatePath } from 'next/cache';
 
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@/types/database.types';
+
 import { safeCurrency } from '@/constants/currencies';
 import { ROUTES } from '@/constants/routes';
 import { logActivity, type ActivityEventInput } from '@/lib/activity-log';
@@ -28,6 +31,20 @@ import type { ActionResult } from '@/types';
  */
 
 const GENERIC_ERROR = 'Something went wrong. Please try again.';
+
+async function resolveLinkedMemberId(
+  supabase: SupabaseClient<Database>,
+  ownerId: string,
+  linkedUserId: string,
+): Promise<string | null> {
+  const { data } = await supabase
+    .from('members')
+    .select('id')
+    .eq('owner_id', ownerId)
+    .eq('linked_user_id', linkedUserId)
+    .maybeSingle();
+  return data?.id ?? null;
+}
 
 /** Record a transfer from `payerId` to `receiverId`, clearing that much debt. */
 export async function recordSettlement(
@@ -151,6 +168,7 @@ export async function recordSettlement(
       ownerId: user.id,
       type: 'settlement_recorded',
       subject: counterparty?.name ?? 'someone',
+      expenseId: parsed.data.expenseId,
       amountCents: parsed.data.amountCents,
       currency,
       groupId,
@@ -161,13 +179,20 @@ export async function recordSettlement(
   ];
   for (const party of [payer, receiver]) {
     if (party?.linked_user_id && party.linked_user_id !== user.id) {
+      const memberId = await resolveLinkedMemberId(
+        supabase,
+        party.linked_user_id,
+        user.id,
+      );
       events.push({
         ownerId: party.linked_user_id,
         type: 'settlement_received',
         amountCents: parsed.data.amountCents,
         currency,
+        expenseId: parsed.data.expenseId,
         groupId,
         contextLabel,
+        memberId,
       });
     }
   }
@@ -267,6 +292,10 @@ export async function settleWithMember(input: {
   const currency = safeCurrency(profile?.preferred_currency);
   const contextLabel = group?.name ?? null;
 
+  const ownFeedMemberId = callerIsOwner
+    ? member.id
+    : await resolveLinkedMemberId(supabase, user.id, member.owner_id);
+
   const events: ActivityEventInput[] = [
     {
       ownerId: user.id,
@@ -277,12 +306,14 @@ export async function settleWithMember(input: {
       groupId,
       contextLabel,
       settlementId,
-      // Only meaningful in my own ledger — it's my member id. When I'm the
-      // participant settling in someone else's ledger, the id wouldn't resolve for me.
-      memberId: callerIsOwner ? member.id : null,
+      memberId: ownFeedMemberId,
     },
   ];
   if (counterpartyAccount) {
+    const counterpartyMemberId = callerIsOwner
+      ? await resolveLinkedMemberId(supabase, counterpartyAccount, user.id)
+      : member.id;
+
     events.push({
       ownerId: counterpartyAccount,
       type: 'settlement_received',
@@ -291,8 +322,7 @@ export async function settleWithMember(input: {
       groupId,
       contextLabel,
       settlementId,
-      // Conversely: in the owner's ledger, this member is the settling participant.
-      memberId: callerIsOwner ? null : member.id,
+      memberId: counterpartyMemberId,
     });
   }
   await logActivity(supabase, events);
