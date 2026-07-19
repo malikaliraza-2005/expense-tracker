@@ -2,79 +2,87 @@
 
 import * as React from 'react';
 
-import { MessageCircle, Send } from 'lucide-react';
+import { Send } from 'lucide-react';
 import { toast } from 'sonner';
 
 import {
-  deleteExpenseMessageForEveryone,
-  deleteExpenseMessageForMe,
-  sendExpenseMessage,
-} from '@/actions/chat';
+  deleteDirectMessageForEveryone,
+  deleteDirectMessageForMe,
+  markDmRead,
+  sendDirectMessage,
+} from '@/actions/dm';
 import { MessageActions } from '@/components/chat/message-actions';
 import { TypingIndicator } from '@/components/common/typing-indicator';
 import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { useTypingIndicator } from '@/hooks/use-typing-indicator';
 import {
   DELETED_MESSAGE_TEXT,
   isDeleted,
-  isSendableBody,
   mergeMessage,
-  normalizeBody,
   replaceMessage,
-  toChatMessage,
+  sortMessages,
   upsertMessage,
 } from '@/lib/chat';
+import { isSendableBody, normalizeBody, toDirectMessage } from '@/lib/dm';
 import { createClient } from '@/lib/supabase/client';
-import type { Message } from '@/types/db';
-import type { ChatMessage, ExpenseChatData } from '@/types/dto';
+import type { DmMessage } from '@/types/db';
+import type { DirectMessage, DmThreadData } from '@/types/dto';
 import { cn } from '@/utils/cn';
 
 /**
- * The isolated chat thread for one expense (Phase 6, per-expense model). Everything
- * here is scoped to a single `expenseId`:
+ * A one-to-one DM conversation. The DM counterpart of `ExpenseChat`, scoped to a single
+ * `threadId` and reusing the same three behaviours:
  *
- *  1. **Live receive.** Subscribes to `postgres_changes` INSERTs on `messages`
- *     filtered `expense_id=eq.<id>` (after `realtime.setAuth`, so RLS applies to the
- *     socket) — a message posted on any *other* expense never arrives.
+ *  1. **Live receive.** Subscribes to `postgres_changes` INSERTs on `dm_messages`
+ *     filtered `thread_id=eq.<id>` (after `realtime.setAuth`, so RLS applies to the
+ *     socket) — a message posted in any *other* thread never arrives.
  *  2. **Optimistic send.** A typed message shows immediately with a temp id, then the
- *     persisted row from {@link sendExpenseMessage} replaces it; the realtime echo of
+ *     persisted row from {@link sendDirectMessage} replaces it; the realtime echo of
  *     our own message de-dupes by id.
- *  3. **Ordering.** All merges keep the list oldest-first (see `@/lib/chat`).
+ *  3. **Ordering.** All merges keep the list oldest-first (the shared `@/lib/chat`
+ *     engine, now generic over any {id, createdAt} message).
  *
  * Bodies render as text (never HTML), so emoji render as themselves and there is no
- * XSS surface. `canChat` (the participant gate) decides whether the composer shows.
+ * XSS surface. On mount, and whenever the other party's message arrives, the thread is
+ * marked read so its unread badge clears elsewhere.
  */
-export function ExpenseChat({ data }: { data: ExpenseChatData }) {
-  const { expenseId, meId, canChat, senderNames } = data;
+export function DmThread({ data }: { data: DmThreadData }) {
+  const { threadId, meId, otherUserId, otherName } = data;
 
-  const [messages, setMessages] = React.useState<ChatMessage[]>(data.messages);
+  const [messages, setMessages] = React.useState<DirectMessage[]>(
+    sortMessages(data.messages),
+  );
   const [input, setInput] = React.useState('');
   const [mounted, setMounted] = React.useState(false);
 
   const tempCounter = React.useRef(0);
   const bottomRef = React.useRef<HTMLDivElement>(null);
 
-  // Live "typing…" on a separate private channel (see useTypingIndicator), gated by the
-  // same participant check as the composer. Unlike a DM there can be several typers, so
-  // each id is resolved to how the viewer knows that sender.
-  const { typingUserIds, notifyTyping, stopTyping, clearFrom } = useTypingIndicator({
-    topic: `expense-typing:${expenseId}`,
-    meId,
-    enabled: canChat,
-  });
-  const typingNames = typingUserIds.map(
-    (id) => senderNames[id] ?? 'Participant',
+  // Live "typing…" on a separate private channel (see useTypingIndicator). In a DM
+  // there is exactly one other party, so any typer id resolves to their roster name.
+  const { typingUserIds, notifyTyping, stopTyping, clearFrom } =
+    useTypingIndicator({ topic: `dm-typing:${threadId}`, meId });
+  const typingNames = typingUserIds.map((id) =>
+    id === otherUserId ? otherName : 'Someone',
   );
 
   React.useEffect(() => setMounted(true), []);
 
-  // Live messages for this expense only. RLS on the socket means non-participants
+  // Mark the thread read on open and whenever new incoming messages settle. Fire and
+  // forget — a failed read receipt is harmless and must never interrupt the user.
+  const markRead = React.useCallback(() => {
+    void markDmRead({ threadId });
+  }, [threadId]);
+
+  React.useEffect(() => {
+    markRead();
+  }, [markRead]);
+
+  // Live messages for this thread only. RLS on the socket means non-participants
   // receive nothing even if they somehow subscribe.
   React.useEffect(() => {
-    if (!canChat) return;
     const supabase = createClient();
     let cancelled = false;
     let channel: ReturnType<typeof supabase.channel> | null = null;
@@ -87,21 +95,25 @@ export function ExpenseChat({ data }: { data: ExpenseChatData }) {
       if (cancelled) return;
 
       channel = supabase
-        .channel(`expense-chat:${expenseId}`)
+        .channel(`dm-thread:${threadId}`)
         .on(
           'postgres_changes',
           {
             event: 'INSERT',
             schema: 'public',
-            table: 'messages',
-            filter: `expense_id=eq.${expenseId}`,
+            table: 'dm_messages',
+            filter: `thread_id=eq.${threadId}`,
           },
           (payload) => {
-            const incoming = toChatMessage(payload.new as Message);
+            const incoming = toDirectMessage(payload.new as DmMessage);
             setMessages((prev) => mergeMessage(prev, incoming));
-            // Their message landed — drop their "typing…" now rather than waiting out
-            // the expiry.
-            if (incoming.senderId !== meId) clearFrom(incoming.senderId);
+            if (incoming.senderId !== meId) {
+              // The other party just wrote — keep our read watermark current so we
+              // don't accrue a phantom unread count while actively looking at it, and
+              // drop their "typing…" now rather than waiting out the expiry.
+              markRead();
+              clearFrom(incoming.senderId);
+            }
           },
         )
         .on(
@@ -109,14 +121,14 @@ export function ExpenseChat({ data }: { data: ExpenseChatData }) {
           {
             event: 'UPDATE',
             schema: 'public',
-            table: 'messages',
-            filter: `expense_id=eq.${expenseId}`,
+            table: 'dm_messages',
+            filter: `thread_id=eq.${threadId}`,
           },
           (payload) => {
             // The only UPDATE is a "deleted for everyone" retraction — swap the tombstone
-            // in place (upsert, since the id already exists) for every participant live.
+            // in place (upsert, since the id already exists) for both participants live.
             setMessages((prev) =>
-              upsertMessage(prev, toChatMessage(payload.new as Message)),
+              upsertMessage(prev, toDirectMessage(payload.new as DmMessage)),
             );
           },
         )
@@ -127,7 +139,7 @@ export function ExpenseChat({ data }: { data: ExpenseChatData }) {
       cancelled = true;
       if (channel) supabase.removeChannel(channel);
     };
-  }, [expenseId, canChat, meId, clearFrom]);
+  }, [threadId, meId, markRead, clearFrom]);
 
   // Keep the newest message in view as the thread grows.
   React.useEffect(() => {
@@ -141,9 +153,9 @@ export function ExpenseChat({ data }: { data: ExpenseChatData }) {
     if (!isSendableBody(body)) return;
 
     const tempId = `temp-${tempCounter.current++}`;
-    const optimistic: ChatMessage = {
+    const optimistic: DirectMessage = {
       id: tempId,
-      expenseId,
+      threadId,
       senderId: meId,
       body,
       createdAt: new Date().toISOString(),
@@ -151,10 +163,10 @@ export function ExpenseChat({ data }: { data: ExpenseChatData }) {
     };
     setMessages((prev) => mergeMessage(prev, optimistic));
     setInput('');
-    stopTyping(); // sending ends "typing…" immediately for everyone else
+    stopTyping(); // sending ends "typing…" immediately for the other side
 
     void (async () => {
-      const res = await sendExpenseMessage({ expenseId, body });
+      const res = await sendDirectMessage({ threadId, body });
       if (!res.ok) {
         setMessages((prev) => prev.filter((message) => message.id !== tempId));
         setInput((current) => current || body);
@@ -165,11 +177,12 @@ export function ExpenseChat({ data }: { data: ExpenseChatData }) {
     })();
   }
 
-  // Hide a message from my view only. Optimistically drop it, restoring it on failure.
-  function deleteForMe(message: ChatMessage) {
+  // Hide a message from my view only. Optimistically drop it, restoring it if the
+  // server rejects the request.
+  function deleteForMe(message: DirectMessage) {
     setMessages((prev) => prev.filter((m) => m.id !== message.id));
     void (async () => {
-      const res = await deleteExpenseMessageForMe({ messageId: message.id });
+      const res = await deleteDirectMessageForMe({ messageId: message.id });
       if (!res.ok) {
         setMessages((prev) => mergeMessage(prev, message));
         toast.error(res.error);
@@ -177,17 +190,17 @@ export function ExpenseChat({ data }: { data: ExpenseChatData }) {
     })();
   }
 
-  // Retract a message for all participants. Optimistically tombstone it (realtime
-  // delivers the same to the others); revert to the original on failure.
-  function deleteForEveryone(message: ChatMessage) {
-    const tombstone: ChatMessage = {
+  // Retract a message for both participants. Optimistically tombstone it (realtime
+  // delivers the same to the other side); revert to the original on failure.
+  function deleteForEveryone(message: DirectMessage) {
+    const tombstone: DirectMessage = {
       ...message,
       body: DELETED_MESSAGE_TEXT,
       deletedAt: new Date().toISOString(),
     };
     setMessages((prev) => upsertMessage(prev, tombstone));
     void (async () => {
-      const res = await deleteExpenseMessageForEveryone({ messageId: message.id });
+      const res = await deleteDirectMessageForEveryone({ messageId: message.id });
       if (!res.ok) {
         setMessages((prev) => upsertMessage(prev, message));
         toast.error(res.error);
@@ -196,80 +209,66 @@ export function ExpenseChat({ data }: { data: ExpenseChatData }) {
   }
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <MessageCircle className="h-4 w-4 text-primary" />
-          Chat
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-col overflow-hidden rounded-xl border border-border/50 bg-background/30">
-          <div className="max-h-[50vh] min-h-[12rem] flex-1 space-y-3 overflow-y-auto p-4">
-            {messages.length === 0 ? (
-              <div className="flex h-full min-h-[10rem] flex-col items-center justify-center text-center">
-                <p className="text-sm text-muted-foreground">
-                  {canChat
-                    ? 'No messages yet. Start the conversation about this expense. 👋'
-                    : 'Chat is limited to people on this expense.'}
-                </p>
-              </div>
-            ) : (
-              messages.map((message) => (
-                <MessageBubble
-                  key={message.id}
-                  message={message}
-                  mine={message.senderId === meId}
-                  senderName={senderNames[message.senderId] ?? 'Participant'}
-                  showTime={mounted}
-                  onDeleteForMe={() => deleteForMe(message)}
-                  onDeleteForEveryone={() => deleteForEveryone(message)}
-                />
-              ))
-            )}
-            <div ref={bottomRef} />
+    <div className="flex h-[calc(100dvh-13rem)] min-h-[24rem] flex-col overflow-hidden rounded-2xl border border-border/50 bg-background/30 md:h-[calc(100dvh-11rem)]">
+      <div className="flex-1 space-y-3 overflow-y-auto p-4">
+        {messages.length === 0 ? (
+          <div className="flex h-full min-h-[10rem] flex-col items-center justify-center text-center">
+            <p className="text-sm text-muted-foreground">
+              No messages yet. Say hi to {otherName}. 👋
+            </p>
           </div>
+        ) : (
+          messages.map((message) => (
+            <MessageBubble
+              key={message.id}
+              message={message}
+              mine={message.senderId === meId}
+              senderName={otherName}
+              showTime={mounted}
+              onDeleteForMe={() => deleteForMe(message)}
+              onDeleteForEveryone={() => deleteForEveryone(message)}
+            />
+          ))
+        )}
+        <div ref={bottomRef} />
+      </div>
 
-          <TypingIndicator names={typingNames} />
+      <TypingIndicator names={typingNames} />
 
-          {canChat ? (
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                send();
-              }}
-              className="flex items-center gap-2 border-t border-border/50 p-3"
-            >
-              <Input
-                value={input}
-                onChange={(event) => {
-                  setInput(event.target.value);
-                  notifyTyping();
-                }}
-                placeholder="Message about this expense"
-                aria-label="Message about this expense"
-                maxLength={2000}
-                autoComplete="off"
-                className="flex-1"
-              />
-              <Button
-                type="submit"
-                variant="gradient"
-                size="icon"
-                disabled={!canSend}
-                aria-label="Send message"
-              >
-                <Send />
-              </Button>
-            </form>
-          ) : null}
-        </div>
-      </CardContent>
-    </Card>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          send();
+        }}
+        className="flex items-center gap-2 border-t border-border/50 p-3"
+      >
+        <Input
+          value={input}
+          onChange={(event) => {
+            setInput(event.target.value);
+            notifyTyping();
+          }}
+          placeholder={`Message ${otherName}`}
+          aria-label={`Message ${otherName}`}
+          maxLength={2000}
+          autoComplete="off"
+          className="flex-1"
+        />
+        <Button
+          type="submit"
+          variant="gradient"
+          size="icon"
+          disabled={!canSend}
+          aria-label="Send message"
+        >
+          <Send />
+        </Button>
+      </form>
+    </div>
   );
 }
 
-/** One message bubble: right-aligned for the current user, left for everyone else. */
+/** One message bubble: right-aligned for the current user, left for the other party. */
 function MessageBubble({
   message,
   mine,
@@ -278,7 +277,7 @@ function MessageBubble({
   onDeleteForMe,
   onDeleteForEveryone,
 }: {
-  message: ChatMessage;
+  message: DirectMessage;
   mine: boolean;
   senderName: string;
   showTime: boolean;
@@ -318,11 +317,6 @@ function MessageBubble({
         />
       ) : null}
       <div className="flex max-w-[80%] flex-col">
-        {!mine ? (
-          <span className="mb-0.5 pl-1 text-xs font-medium text-muted-foreground">
-            {senderName}
-          </span>
-        ) : null}
         <div
           className={cn(
             'rounded-2xl px-3 py-2 text-sm shadow-sm',

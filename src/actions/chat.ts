@@ -70,7 +70,7 @@ export async function sendExpenseMessage(input: {
   const { data: row, error } = await supabase
     .from('messages')
     .insert({ expense_id: expenseId, sender_id: user.id, body })
-    .select('id, expense_id, sender_id, body, created_at')
+    .select('id, expense_id, sender_id, body, created_at, deleted_at')
     .single();
   if (error) {
     // 42501 = RLS violation → the caller isn't a participant of this expense.
@@ -90,4 +90,65 @@ export async function sendExpenseMessage(input: {
   }
 
   return { ok: true, data: { message: toChatMessage(row) } };
+}
+
+/**
+ * Delete an expense-chat message FOR EVERYONE — retracting it from all participants. The
+ * RPC is the sole authority: it soft-deletes and tombstones the body only when the
+ * caller is the message's sender, so this is a no-op for anyone else or an already-
+ * deleted message. The UPDATE fans the tombstone out to every participant over realtime;
+ * the caller's own view updates optimistically.
+ */
+export async function deleteExpenseMessageForEveryone(input: {
+  messageId?: unknown;
+}): Promise<ActionResult> {
+  const messageId =
+    typeof input?.messageId === 'string' ? input.messageId.trim() : '';
+  if (!UUID_RE.test(messageId)) return { ok: false, error: 'Missing message.' };
+
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'You must be signed in.' };
+
+  const { data: changed, error } = await supabase.rpc(
+    'delete_expense_message_for_everyone',
+    { p_message: messageId },
+  );
+  if (error) return { ok: false, error: GENERIC_ERROR };
+  if (!changed) {
+    return { ok: false, error: 'You can only delete your own messages for everyone.' };
+  }
+
+  return { ok: true, data: undefined };
+}
+
+/**
+ * Delete an expense-chat message FOR ME — hiding it from my own view only, across
+ * devices and reloads. Records a per-user row (RLS pins `user_id = auth.uid()`); other
+ * participants are unaffected. Idempotent.
+ */
+export async function deleteExpenseMessageForMe(input: {
+  messageId?: unknown;
+}): Promise<ActionResult> {
+  const messageId =
+    typeof input?.messageId === 'string' ? input.messageId.trim() : '';
+  if (!UUID_RE.test(messageId)) return { ok: false, error: 'Missing message.' };
+
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'You must be signed in.' };
+
+  const { error } = await supabase
+    .from('message_deletions')
+    .upsert(
+      { message_id: messageId, user_id: user.id },
+      { onConflict: 'message_id,user_id', ignoreDuplicates: true },
+    );
+  if (error) return { ok: false, error: GENERIC_ERROR };
+
+  return { ok: true, data: undefined };
 }

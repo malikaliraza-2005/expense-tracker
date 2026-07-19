@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  DELETED_MESSAGE_TEXT,
   MAX_MESSAGE_LENGTH,
   compareMessages,
+  isDeleted,
   isSendableBody,
   mergeMessage,
   normalizeBody,
   replaceMessage,
   sortMessages,
+  upsertMessage,
 } from '@/lib/chat';
 import type { ChatMessage } from '@/types/dto';
 
@@ -93,6 +96,44 @@ describe('mergeMessage', () => {
     const merged = mergeMessage(list, msg({ id: 'a', body: 'echo' }));
     expect(merged).toHaveLength(1);
     expect(merged[0].body).toBe('hi');
+  });
+});
+
+describe('upsertMessage', () => {
+  it('replaces an existing message in place (a "deleted for everyone" tombstone)', () => {
+    const list = [
+      msg({ id: 'a', createdAt: '2026-01-01T00:00:00.000Z' }),
+      msg({ id: 'b', body: 'secret', createdAt: '2026-01-01T00:00:01.000Z' }),
+    ];
+    const tombstone = msg({
+      id: 'b',
+      body: DELETED_MESSAGE_TEXT,
+      createdAt: '2026-01-01T00:00:01.000Z',
+      deletedAt: '2026-01-01T00:05:00.000Z',
+    });
+    const next = upsertMessage(list, tombstone);
+    // Same length + position; only the body/deletedAt changed.
+    expect(next.map((m) => m.id)).toEqual(['a', 'b']);
+    const updated = next.find((m) => m.id === 'b')!;
+    expect(updated.body).toBe(DELETED_MESSAGE_TEXT);
+    expect(isDeleted(updated)).toBe(true);
+  });
+
+  it('merges a brand-new message when its id is absent', () => {
+    const list = [msg({ id: 'a', createdAt: '2026-01-01T00:00:01.000Z' })];
+    const next = upsertMessage(
+      list,
+      msg({ id: 'b', createdAt: '2026-01-01T00:00:00.000Z' }),
+    );
+    expect(next.map((m) => m.id)).toEqual(['b', 'a']);
+  });
+});
+
+describe('isDeleted', () => {
+  it('is true only when deletedAt is set', () => {
+    expect(isDeleted(msg({}))).toBe(false);
+    expect(isDeleted(msg({ deletedAt: null }))).toBe(false);
+    expect(isDeleted(msg({ deletedAt: '2026-01-01T00:00:00.000Z' }))).toBe(true);
   });
 });
 

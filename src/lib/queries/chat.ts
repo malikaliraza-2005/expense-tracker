@@ -34,11 +34,16 @@ export const getExpenseChat = cache(
     });
     if (!canChat) return { ...empty, canChat: false };
 
-    // Messages for this expense only (RLS re-checks the gate); oldest-first.
+    // Messages for this expense only (RLS re-checks the gate); oldest-first. The
+    // embedded `message_deletions` is RLS-scoped to the caller, so a non-empty array
+    // means "I deleted this for myself" — filtered out below. A message deleted for
+    // everyone (deleted_at set) stays, rendered as a tombstone.
     const [{ data: rows }, { data: members }] = await Promise.all([
       supabase
         .from('messages')
-        .select('id, expense_id, sender_id, body, created_at')
+        .select(
+          'id, expense_id, sender_id, body, created_at, deleted_at, message_deletions(user_id)',
+        )
         .eq('expense_id', expenseId)
         .order('created_at', { ascending: true }),
       // Names for other senders: any account I can see linked to one of my members.
@@ -55,11 +60,15 @@ export const getExpenseChat = cache(
       }
     }
 
+    const visible = (rows ?? []).filter(
+      (row) => (row.message_deletions?.length ?? 0) === 0,
+    );
+
     return {
       expenseId,
       meId: user.id,
       canChat: true,
-      messages: (rows ?? []).map(toChatMessage),
+      messages: visible.map(toChatMessage),
       senderNames,
     };
   },

@@ -20,7 +20,7 @@ export const MAX_MESSAGE_LENGTH = 2000;
 /** The `messages`-row fields both the server read and the realtime payload carry. */
 type MessageRow = Pick<
   Message,
-  'id' | 'expense_id' | 'sender_id' | 'body' | 'created_at'
+  'id' | 'expense_id' | 'sender_id' | 'body' | 'created_at' | 'deleted_at'
 >;
 
 /**
@@ -35,7 +35,21 @@ export function toChatMessage(row: MessageRow): ChatMessage {
     senderId: row.sender_id,
     body: row.body,
     createdAt: row.created_at,
+    deletedAt: row.deleted_at,
   };
+}
+
+/**
+ * The placeholder shown in place of a message that was deleted for everyone. The DB
+ * overwrites the body with this same string on retraction, but the UI keys off
+ * {@link isDeleted} (the `deletedAt` flag) so it can style the tombstone rather than
+ * trusting a body value.
+ */
+export const DELETED_MESSAGE_TEXT = 'This message was deleted';
+
+/** Whether a message was deleted for everyone (its `deletedAt` is set). */
+export function isDeleted(message: { deletedAt?: string | null }): boolean {
+  return message.deletedAt != null;
 }
 
 /** The stored form of a typed body: trimmed of surrounding whitespace. */
@@ -54,15 +68,26 @@ export function isSendableBody(raw: string): boolean {
 }
 
 /**
+ * The minimum a value needs to be ordered and de-duplicated by the engine below: a
+ * stable `id` and an ISO `createdAt`. Both {@link ChatMessage} (per-expense) and
+ * `DirectMessage` (DMs) satisfy it, so the same sort/merge logic serves both surfaces
+ * without either importing the other's shape.
+ */
+export interface OrderableMessage {
+  id: string;
+  createdAt: string;
+}
+
+/**
  * Total order over messages: oldest first by `createdAt`, breaking ties by `id` so
  * the order is deterministic even when two messages share a timestamp.
  */
-export function compareMessages(a: ChatMessage, b: ChatMessage): number {
+export function compareMessages(a: OrderableMessage, b: OrderableMessage): number {
   return a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
 }
 
 /** Sort messages into their canonical (oldest-first) display order. */
-export function sortMessages(messages: ChatMessage[]): ChatMessage[] {
+export function sortMessages<T extends OrderableMessage>(messages: T[]): T[] {
   return [...messages].sort(compareMessages);
 }
 
@@ -74,14 +99,33 @@ export function sortMessages(messages: ChatMessage[]): ChatMessage[] {
  * with the temporary ids of optimistic messages, so real and optimistic copies
  * coexist until {@link replaceMessage} swaps them.
  */
-export function mergeMessage(
-  messages: ChatMessage[],
-  incoming: ChatMessage,
-): ChatMessage[] {
+export function mergeMessage<T extends OrderableMessage>(
+  messages: T[],
+  incoming: T,
+): T[] {
   if (messages.some((message) => message.id === incoming.id)) {
     return messages;
   }
   return sortMessages([...messages, incoming]);
+}
+
+/**
+ * Fold an *updated* message into a list: if a message with the same id is present it's
+ * replaced in place (kept sorted — `createdAt` is unchanged by an edit/retraction, so
+ * position is stable); otherwise it's merged as new. This is how a realtime UPDATE — a
+ * "deleted for everyone" retraction — swaps the tombstone in live, where
+ * {@link mergeMessage} would ignore it as a duplicate id.
+ */
+export function upsertMessage<T extends OrderableMessage>(
+  messages: T[],
+  incoming: T,
+): T[] {
+  if (!messages.some((message) => message.id === incoming.id)) {
+    return mergeMessage(messages, incoming);
+  }
+  return sortMessages(
+    messages.map((message) => (message.id === incoming.id ? incoming : message)),
+  );
 }
 
 /**
@@ -90,11 +134,11 @@ export function mergeMessage(
  * de-dupes cleanly if realtime already delivered it). If `tempId` is absent the
  * real message is simply merged.
  */
-export function replaceMessage(
-  messages: ChatMessage[],
+export function replaceMessage<T extends OrderableMessage>(
+  messages: T[],
   tempId: string,
-  real: ChatMessage,
-): ChatMessage[] {
+  real: T,
+): T[] {
   return mergeMessage(
     messages.filter((message) => message.id !== tempId),
     real,
