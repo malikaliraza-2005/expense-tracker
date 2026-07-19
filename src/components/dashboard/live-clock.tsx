@@ -28,21 +28,35 @@ export function LiveClock({ name }: { name?: string | null }) {
     return () => clearInterval(id);
   }, []);
 
+  // Build the formatters once, not on every one-second tick — constructing an
+  // `Intl.DateTimeFormat` is comparatively expensive, and this component
+  // re-renders 60 times a minute for the lifetime of the dashboard.
+  const dateFmt = React.useMemo(
+    () =>
+      new Intl.DateTimeFormat(undefined, {
+        weekday: 'long',
+        month: 'short',
+        day: 'numeric',
+      }),
+    [],
+  );
+  const timeFmt = React.useMemo(
+    () =>
+      new Intl.DateTimeFormat(undefined, {
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+      }),
+    [],
+  );
+
   if (!now) {
     // Reserve height so the layout doesn't shift when the clock appears.
     return <div className="h-7" aria-hidden />;
   }
 
-  const dateStr = new Intl.DateTimeFormat(undefined, {
-    weekday: 'long',
-    month: 'short',
-    day: 'numeric',
-  }).format(now);
-  const timeStr = new Intl.DateTimeFormat(undefined, {
-    hour: 'numeric',
-    minute: '2-digit',
-    second: '2-digit',
-  }).format(now);
+  const dateStr = dateFmt.format(now);
+  const timeStr = timeFmt.format(now);
   const first = name?.trim().split(/\s+/)[0];
 
   return (

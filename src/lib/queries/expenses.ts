@@ -1,6 +1,7 @@
 import { getUser } from '@/lib/auth';
 import { expenseMemberLedger } from '@/lib/balances';
 import { getSelfMemberId } from '@/lib/queries/balances';
+import { listCategories } from '@/lib/queries/categories';
 import { getMembers } from '@/lib/queries/members';
 import { createClient } from '@/lib/supabase/server';
 import type {
@@ -134,14 +135,21 @@ export async function getExpenseFormData(): Promise<ExpenseFormData | null> {
   return { selfMemberId, scopes: [everyone, ...groupScopes] };
 }
 
-/** Fetch category rows for a set of ids, keyed by id. */
+/**
+ * Category rows for a set of ids, keyed by id. Categories are a small, static
+ * seed table, so this reads the full set through the request-cached
+ * `listCategories()` and filters in memory rather than issuing a fresh `in()`
+ * query at every call site — the list and detail paths then share one read.
+ */
 async function fetchCategoriesById(
   ids: number[],
 ): Promise<Map<number, Category>> {
   if (ids.length === 0) return new Map();
-  const supabase = createClient();
-  const { data } = await supabase.from('categories').select('*').in('id', ids);
-  return new Map((data ?? []).map((category) => [category.id, category]));
+  const wanted = new Set(ids);
+  const all = await listCategories();
+  return new Map(
+    all.filter((category) => wanted.has(category.id)).map((c) => [c.id, c]),
+  );
 }
 
 /** Fetch member rows for a set of ids, keyed by id. */
@@ -170,7 +178,7 @@ interface ExpenseSettlementStatus {
  * call errors and this returns an empty map, so callers fall back to the manual
  * `settled_at` flag and nothing breaks.
  */
-async function fetchSettlementStatus(
+export async function fetchSettlementStatus(
   expenseIds: string[],
 ): Promise<Map<string, ExpenseSettlementStatus>> {
   if (expenseIds.length === 0) return new Map();
@@ -200,7 +208,7 @@ async function fetchSettlementStatus(
  * read from their self-member) so the UI can say whose it is. Without that the two
  * would be indistinguishable in one list.
  */
-async function shapeExpenseList(
+export async function shapeExpenseList(
   expenses: Expense[],
 ): Promise<ExpenseListItem[]> {
   if (expenses.length === 0) return [];
@@ -369,17 +377,22 @@ export async function getExpense(
 ): Promise<ExpenseDetail | null> {
   const supabase = createClient();
 
-  const { data: expense } = await supabase
-    .from('expenses')
-    .select('*')
-    .eq('id', expenseId)
-    .single<Expense>();
+  // The expense row and its splits both key only off `expenseId`, so they're
+  // independent — fetch them in one round-trip's worth of latency instead of a
+  // waterfall. (An unreadable expense wastes the splits read, but that's the
+  // rare miss path, not the hot one.)
+  const [{ data: expense }, { data: splits }] = await Promise.all([
+    supabase
+      .from('expenses')
+      .select('*')
+      .eq('id', expenseId)
+      .single<Expense>(),
+    supabase
+      .from('expense_splits')
+      .select('member_id, share_cents, split_type')
+      .eq('expense_id', expenseId),
+  ]);
   if (!expense) return null;
-
-  const { data: splits } = await supabase
-    .from('expense_splits')
-    .select('member_id, share_cents, split_type')
-    .eq('expense_id', expenseId);
 
   const [categoriesById, group] = await Promise.all([
     fetchCategoriesById([expense.category_id]),
@@ -396,20 +409,22 @@ export async function getExpense(
   const category = categoriesById.get(expense.category_id);
   if (!category) return null;
 
+  // Member rows and settlement standing are independent (the status RPC keys off
+  // `expenseId` alone), so resolve them together rather than in a waterfall.
   const participantIds = (splits ?? []).map((split) => split.member_id);
-  const membersById = await fetchMembersById([
-    expense.paid_by,
-    ...participantIds,
+  const [membersById, statusMap] = await Promise.all([
+    fetchMembersById([expense.paid_by, ...participantIds]),
+    // Settlement standing from the OWNER's ledger (migration 0031), so a shared
+    // participant sees the same figures — payments made by anyone, on any account,
+    // clear this expense's remaining identically here. Empty when 0031 isn't
+    // applied, in which case the manual settled flag alone drives status.
+    fetchSettlementStatus([expenseId]),
   ]);
 
   const payer = membersById.get(expense.paid_by);
   if (!payer) return null;
 
-  // Settlement standing from the OWNER's ledger (migration 0031), so a shared
-  // participant sees the same figures — payments made by anyone, on any account,
-  // clear this expense's remaining identically here. Empty when 0031 isn't applied,
-  // in which case the manual settled flag alone drives status (unchanged behaviour).
-  const status = (await fetchSettlementStatus([expenseId])).get(expenseId);
+  const status = statusMap.get(expenseId);
   const manualSettled = Boolean(expense.settled_at);
   const fullySettled = manualSettled || Boolean(status?.fullySettled);
 

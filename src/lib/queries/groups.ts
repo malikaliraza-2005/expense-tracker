@@ -53,16 +53,20 @@ export async function listGroups(): Promise<GroupWithBalance[]> {
     countByGroup.set(row.group_id, (countByGroup.get(row.group_id) ?? 0) + 1);
   }
 
-  const result: GroupWithBalance[] = [];
-  for (const group of groups as Group[]) {
-    const { netCents } = summarize(await getGroupBalances(group.id));
-    result.push({
-      group,
-      memberCount: countByGroup.get(group.id) ?? 0,
-      netCents,
-    });
-  }
-  return result;
+  // Resolve every group's net concurrently rather than one-after-another. The
+  // heavy ledger read is request-cached (shared across these calls); the only
+  // per-group work is the viewer-member lookup, so fanning them out with
+  // Promise.all collapses N sequential round-trips into one wave.
+  return Promise.all(
+    (groups as Group[]).map(async (group) => {
+      const { netCents } = summarize(await getGroupBalances(group.id));
+      return {
+        group,
+        memberCount: countByGroup.get(group.id) ?? 0,
+        netCents,
+      };
+    }),
+  );
 }
 
 /** One group by id, or null when it isn't the owner's. */

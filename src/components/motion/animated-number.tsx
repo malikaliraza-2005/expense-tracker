@@ -2,12 +2,7 @@
 
 import * as React from 'react';
 
-import {
-  animate,
-  useInView,
-  useMotionValue,
-  useReducedMotion,
-} from 'framer-motion';
+import { animate, useInView, useReducedMotion } from 'framer-motion';
 
 import { useCurrency } from '@/components/providers/currency-provider';
 
@@ -35,7 +30,12 @@ export function AnimatedNumber({
   className?: string;
 }) {
   const { format: formatMoney } = useCurrency();
-  const fmt =
+
+  // Keep the formatter in a ref so the animation effect doesn't have to list an
+  // unstable function in its deps (and so a `format`/currency change is always
+  // picked up without re-running the animation).
+  const fmtRef = React.useRef<(n: number) => string>(() => '');
+  fmtRef.current =
     format ??
     (currency
       ? (n: number) => formatMoney(Math.round(n))
@@ -44,27 +44,45 @@ export function AnimatedNumber({
   const reduce = useReducedMotion();
   const ref = React.useRef<HTMLSpanElement>(null);
   const inView = useInView(ref, { once: true, margin: '-20px' });
-  const motionValue = useMotionValue(0);
-  const [display, setDisplay] = React.useState(() => fmt(reduce ? value : 0));
+  // The last numeric value shown, so a re-run animates from where it left off
+  // rather than snapping back to zero.
+  const currentRef = React.useRef(reduce ? value : 0);
+
+  // The server/first paint value. After mount the effect owns `textContent`.
+  const initial = fmtRef.current(currentRef.current);
 
   React.useEffect(() => {
-    if (reduce) {
-      setDisplay(fmt(value));
+    const node = ref.current;
+    if (!node) return;
+
+    // Reduced motion (or not yet scrolled into view): show the final value with
+    // no animation.
+    if (reduce || !inView) {
+      currentRef.current = value;
+      node.textContent = fmtRef.current(value);
       return;
     }
-    if (!inView) return;
-    const controls = animate(motionValue, value, {
+
+    // Animate by writing each frame straight to the DOM node — no React state
+    // update per frame, so counting up a hero figure doesn't re-render the tree
+    // ~60 times a second (this used to `setState` every frame, and several of
+    // these mount on the dashboard at once).
+    const controls = animate(currentRef.current, value, {
       duration,
       ease: [0.16, 1, 0.3, 1],
-      onUpdate: (latest) => setDisplay(fmt(latest)),
+      onUpdate: (latest) => {
+        currentRef.current = latest;
+        node.textContent = fmtRef.current(latest);
+      },
     });
     return () => controls.stop();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inView, value, reduce, duration, currency]);
+    // `formatMoney` is stable per currency (memoised in the provider); listing it
+    // re-syncs the text when the user changes currency.
+  }, [inView, value, reduce, duration, formatMoney]);
 
   return (
-    <span ref={ref} className={className}>
-      {display}
+    <span ref={ref} className={className} suppressHydrationWarning>
+      {initial}
     </span>
   );
 }

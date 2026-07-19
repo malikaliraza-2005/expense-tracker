@@ -3,6 +3,7 @@
 import * as React from 'react';
 
 import { DEFAULT_LOCALE } from '@/constants/app';
+import { useMinuteTick } from '@/hooks/use-minute-tick';
 import { relativeDay, toDate } from '@/utils/date';
 
 /**
@@ -24,13 +25,13 @@ export function LocalDate({
   relative?: boolean;
 }) {
   const [mounted, setMounted] = React.useState(false);
-  const [, setTick] = React.useState(0);
 
-  React.useEffect(() => {
-    setMounted(true);
-    const id = setInterval(() => setTick((t) => t + 1), 60_000);
-    return () => clearInterval(id);
-  }, []);
+  React.useEffect(() => setMounted(true), []);
+
+  // Re-render once a minute (via the shared app-wide ticker, not a per-instance
+  // timer) so the relative label rolls over — "Today" → "Yesterday" — without a
+  // reload. A list of N rows then costs one interval, not N.
+  useMinuteTick();
 
   const date = toDate(value);
   // Before mount use the app locale (matches SSR); after mount follow the

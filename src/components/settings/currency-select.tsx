@@ -102,10 +102,21 @@ export function CurrencySelect({ current }: { current: string }) {
   React.useLayoutEffect(() => {
     if (!open || !isDesktop) return;
     measure();
-    const onReflow = () => measure();
+    // Coalesce scroll/resize bursts into one measurement per animation frame:
+    // reading `getBoundingClientRect()` synchronously on every scroll event
+    // forces a layout each time (layout thrash). rAF batches it to ~60/sec max.
+    let frame: number | null = null;
+    const onReflow = () => {
+      if (frame !== null) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        measure();
+      });
+    };
     window.addEventListener('scroll', onReflow, true);
     window.addEventListener('resize', onReflow);
     return () => {
+      if (frame !== null) cancelAnimationFrame(frame);
       window.removeEventListener('scroll', onReflow, true);
       window.removeEventListener('resize', onReflow);
     };
