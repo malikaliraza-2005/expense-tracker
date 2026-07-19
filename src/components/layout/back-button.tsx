@@ -46,7 +46,7 @@ export function BackButton({ pathname }: { pathname: string }) {
       type="button"
       aria-label="Go back"
       onClick={() => (canGoBack ? router.back() : router.push(ROUTES.dashboard))}
-      className="-ml-1 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-accent/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&_svg]:h-5 [&_svg]:w-5"
+      className="-ml-1 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-accent/40 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:h-9 sm:w-9 [&_svg]:h-5 [&_svg]:w-5"
     >
       <ArrowLeft />
     </button>
