@@ -19,8 +19,8 @@ export const EXPENSE_TEXT_MAX_LENGTH = 500;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export interface CreateExpenseInput {
-  /** Null for a general (ungrouped) expense; a group id otherwise. */
-  groupId: string | null;
+  /** The group this expense belongs to. Every expense is group-based. */
+  groupId: string;
   title: string;
   description: string | null;
   amountCents: number;
@@ -125,7 +125,7 @@ function validateCommon(
   input: CreateExpenseFormInput,
   errors: ExpenseErrors,
 ): CreateExpenseInput | null {
-  const groupId = isNonEmptyString(input.groupId) ? input.groupId.trim() : null;
+  const groupId = isNonEmptyString(input.groupId) ? input.groupId.trim() : '';
   const title = asString(input.title).trim();
   const description = asString(input.description).trim();
   const notes = asString(input.notes).trim();
@@ -134,6 +134,8 @@ function validateCommon(
   const expenseDate = asString(input.expenseDate).trim();
   const paidBy = asString(input.paidBy).trim();
   const memberIds = asIdList(input.memberIds);
+
+  if (!groupId) errors.groupId = 'Choose a group.';
 
   const titleError = validateTitle(title);
   if (titleError) errors.title = titleError;

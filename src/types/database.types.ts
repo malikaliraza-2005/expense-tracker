@@ -189,6 +189,7 @@ export interface Database {
           owner_id: string;
           name: string;
           type: Database['public']['Enums']['group_type'];
+          is_personal: boolean;
           created_at: string;
         };
         Insert: {
@@ -196,6 +197,7 @@ export interface Database {
           owner_id: string;
           name: string;
           type?: Database['public']['Enums']['group_type'];
+          is_personal?: boolean;
           created_at?: string;
         };
         Update: {
@@ -203,6 +205,7 @@ export interface Database {
           owner_id?: string;
           name?: string;
           type?: Database['public']['Enums']['group_type'];
+          is_personal?: boolean;
           created_at?: string;
         };
         Relationships: [
@@ -757,6 +760,12 @@ export interface Database {
       // Migration 0010 — return (creating on first call) the caller's self-member
       // id, so the owner can always be a payer/participant.
       ensure_self_member: {
+        Args: Record<string, never>;
+        Returns: string;
+      };
+      // Migration 0033 — the caller's Personal group id, created (with their
+      // self-member) on first call. The default scope for a quick add.
+      ensure_personal_group: {
         Args: Record<string, never>;
         Returns: string;
       };

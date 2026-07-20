@@ -17,6 +17,7 @@ import { Avatar } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useTypingIndicator } from '@/hooks/use-typing-indicator';
+import { useVisualViewportHeight } from '@/hooks/use-visual-viewport-height';
 import {
   DELETED_MESSAGE_TEXT,
   isDeleted,
@@ -58,7 +59,11 @@ export function DmThread({ data }: { data: DmThreadData }) {
   const [mounted, setMounted] = React.useState(false);
 
   const tempCounter = React.useRef(0);
-  const bottomRef = React.useRef<HTMLDivElement>(null);
+  const listRef = React.useRef<HTMLDivElement>(null);
+
+  // Anchor the frame to the *visible* viewport so the composer stays above the
+  // mobile keyboard rather than behind it (see the hook). No-op on desktop.
+  useVisualViewportHeight();
 
   // Live "typing…" on a separate private channel (see useTypingIndicator). In a DM
   // there is exactly one other party, so any typer id resolves to their roster name.
@@ -141,9 +146,12 @@ export function DmThread({ data }: { data: DmThreadData }) {
     };
   }, [threadId, meId, markRead, clearFrom]);
 
-  // Keep the newest message in view as the thread grows.
+  // Keep the newest message in view as the thread grows. Scroll the messages
+  // container itself (not `scrollIntoView`, which would also scroll the page and
+  // could shift the composer out of view).
   React.useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'end' });
+    const list = listRef.current;
+    if (list) list.scrollTop = list.scrollHeight;
   }, [messages.length]);
 
   const canSend = isSendableBody(input);
@@ -209,8 +217,23 @@ export function DmThread({ data }: { data: DmThreadData }) {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-13rem)] min-h-[24rem] flex-col overflow-hidden rounded-2xl border border-border/50 bg-background/30 md:h-[calc(100dvh-11rem)]">
-      <div className="flex-1 space-y-3 overflow-y-auto p-4">
+    <div className="h-dm-thread flex flex-col overflow-hidden rounded-2xl border border-border/50 bg-background/30 md:min-h-[24rem]">
+      <div className="flex shrink-0 items-center gap-3 border-b border-border/50 p-4">
+        <Avatar name={otherName} className="h-10 w-10" />
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
+            Direct message
+          </p>
+          <h1 className="truncate text-lg font-bold tracking-tight">
+            {otherName}
+          </h1>
+        </div>
+      </div>
+
+      <div
+        ref={listRef}
+        className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4"
+      >
         {messages.length === 0 ? (
           <div className="flex h-full min-h-[10rem] flex-col items-center justify-center text-center">
             <p className="text-sm text-muted-foreground">
@@ -230,17 +253,16 @@ export function DmThread({ data }: { data: DmThreadData }) {
             />
           ))
         )}
-        <div ref={bottomRef} />
       </div>
 
-      <TypingIndicator names={typingNames} />
+      <TypingIndicator names={typingNames} className="shrink-0" />
 
       <form
         onSubmit={(event) => {
           event.preventDefault();
           send();
         }}
-        className="flex items-center gap-2 border-t border-border/50 p-3"
+        className="flex shrink-0 items-center gap-2 border-t border-border/50 p-3"
       >
         <Input
           value={input}

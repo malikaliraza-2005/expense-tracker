@@ -41,6 +41,8 @@ export default async function EditExpensePage({
             categories={categories}
             scopes={formData.scopes}
             selfMemberId={formData.selfMemberId}
+            personalGroupId={formData.personalGroupId}
+            allMembers={formData.allMembers}
             defaultDate={expense.expense_date}
             initial={{
               expenseId: expense.id,

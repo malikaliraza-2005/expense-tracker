@@ -1,12 +1,13 @@
 import { notFound } from 'next/navigation';
 
-import { Eye } from 'lucide-react';
+import { Check, Eye } from 'lucide-react';
 
 import { GroupActions } from '@/components/groups/group-actions';
 import { GroupTabs } from '@/components/groups/group-tabs';
 import { Badge } from '@/components/ui/badge';
 import { groupTypeLabel } from '@/constants/group-types';
 import { requireUser } from '@/lib/auth';
+import { listExpenses } from '@/lib/queries/expenses';
 import { getGroup } from '@/lib/queries/groups';
 
 /**
@@ -28,9 +29,17 @@ export default async function GroupLayout({
   children: React.ReactNode;
 }) {
   const user = await requireUser();
-  const group = await getGroup(params.groupId);
+  const [group, groupExpenses] = await Promise.all([
+    getGroup(params.groupId),
+    listExpenses({ groupId: params.groupId }),
+  ]);
   if (!group) notFound();
   const isOwner = group.owner_id === user.id;
+
+  // The group's settled state: it has expenses, and all of them are fully settled.
+  const hasExpenses = groupExpenses.length > 0;
+  const allSettled =
+    hasExpenses && groupExpenses.every((item) => item.fullySettled);
 
   return (
     <section className="space-y-6">
@@ -39,12 +48,23 @@ export default async function GroupLayout({
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-2xl font-bold tracking-tight">{group.name}</h1>
           <Badge variant="secondary">{groupTypeLabel(group.type)}</Badge>
+          {hasExpenses ? (
+            allSettled ? (
+              <Badge variant="success">
+                <Check className="h-3 w-3" />
+                Settled
+              </Badge>
+            ) : (
+              <Badge variant="warning">Not settled</Badge>
+            )
+          ) : null}
         </div>
         {isOwner ? (
           <GroupActions
             groupId={group.id}
             groupName={group.name}
             groupType={group.type}
+            isPersonal={group.is_personal}
           />
         ) : (
           <Badge variant="secondary" className="shrink-0">

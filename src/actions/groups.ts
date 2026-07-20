@@ -31,9 +31,19 @@ function asUuid(value: unknown): string {
   return UUID_RE.test(id) ? id : '';
 }
 
-/** Create a group and return the new row. */
+/** Well-formed, unique member ids from an untrusted list. */
+function asUuidList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map(asUuid).filter(Boolean))];
+}
+
+/**
+ * Create a group and return the new row. Optional `memberIds` are added at creation
+ * time (in addition to the owner's always-present self-member), so a group is usable
+ * immediately without a detour to the Members tab.
+ */
 export async function createGroup(
-  input: CreateGroupFormInput,
+  input: CreateGroupFormInput & { memberIds?: unknown },
 ): Promise<ActionResult<Group>> {
   const parsed = validateCreateGroup(input);
   if (!parsed.success) {
@@ -60,6 +70,25 @@ export async function createGroup(
     await supabase
       .from('group_members')
       .insert({ group_id: data.id, member_id: selfId });
+  }
+
+  // Add any people chosen at creation. Verify each belongs to the caller before
+  // inserting (never trust the ids), and skip the self-member already added.
+  const requestedIds = asUuidList(input.memberIds).filter((id) => id !== selfId);
+  if (requestedIds.length > 0) {
+    const { data: owned } = await supabase
+      .from('members')
+      .select('id')
+      .eq('owner_id', user.id)
+      .in('id', requestedIds);
+    const rows = (owned ?? []).map((member) => ({
+      group_id: data.id,
+      member_id: member.id,
+    }));
+    if (rows.length > 0) {
+      // Ignore duplicate-membership unique violations — the desired state is met.
+      await supabase.from('group_members').insert(rows);
+    }
   }
 
   revalidatePath(ROUTES.groups);
@@ -98,10 +127,11 @@ export async function renameGroup(
 }
 
 /**
- * Delete a group. Any expenses or settlements in it are first UNGROUPED (their
- * `group_id` set to null) so they survive as general activity — otherwise the
- * `on delete cascade` would delete them along with the group. The group's
- * membership rows cascade away on their own.
+ * Delete a group AND everything in it: its expenses, splits, settlements, and
+ * membership rows all `on delete cascade` away (0010). Every expense now belongs to a
+ * group, so there is nothing to "ungroup" — deleting a group deletes its expenses.
+ * The owner's Personal group is protected: it's the default home for quick-adds and
+ * must always exist.
  */
 export async function deleteGroup(input: {
   groupId?: unknown;
@@ -116,31 +146,25 @@ export async function deleteGroup(input: {
   if (!user) return { ok: false, error: 'You must be signed in.' };
 
   // Only the owner may delete. A participant can read this group (0023) and so can reach
-  // this action, but every write below is owner-scoped and would quietly match zero rows
+  // this action, but the delete below is owner-scoped and would quietly match zero rows
   // — leaving us to report a deletion that never happened.
   const { data: group } = await supabase
     .from('groups')
-    .select('id')
+    .select('id, is_personal')
     .eq('id', groupId)
     .eq('owner_id', user.id)
     .maybeSingle();
   if (!group) return { ok: false, error: 'Group not found.' };
-
-  // Detach activity so it isn't cascade-deleted with the group.
-  await supabase
-    .from('expenses')
-    .update({ group_id: null })
-    .eq('group_id', groupId);
-  await supabase
-    .from('settlements')
-    .update({ group_id: null })
-    .eq('group_id', groupId);
+  if (group.is_personal) {
+    return { ok: false, error: 'Your Personal group can’t be deleted.' };
+  }
 
   const { error } = await supabase.from('groups').delete().eq('id', groupId);
   if (error) return { ok: false, error: GENERIC_ERROR };
 
   revalidatePath(ROUTES.groups);
   revalidatePath(ROUTES.expenses);
+  revalidatePath(ROUTES.dashboard);
   return { ok: true, data: undefined };
 }
 

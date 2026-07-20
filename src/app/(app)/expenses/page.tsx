@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { CheckCircle2, Plus, Receipt, SearchX, Users2 } from 'lucide-react';
 
 import { EmptyState } from '@/components/common/empty-state';
-import { Money } from '@/components/common/money';
+import { BalanceLabel, Money } from '@/components/common/money';
 import { PageHeader } from '@/components/common/page-header';
 import { ExpenseFilters } from '@/components/expenses/expense-filters';
 import { ExpenseList } from '@/components/expenses/expense-list';
@@ -12,6 +12,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ROUTES } from '@/constants/routes';
 import { requireUser } from '@/lib/auth';
+import { summarize } from '@/lib/balances';
+import { getGroupBalances } from '@/lib/queries/balances';
 import { listCategories } from '@/lib/queries/categories';
 import { listExpenses, normalizeSearchTerm } from '@/lib/queries/expenses';
 import { getMembers } from '@/lib/queries/members';
@@ -173,7 +175,11 @@ export default async function ExpensesPage({
                 </div>
               </div>
             ) : (
-              <ExpenseList expenses={expenses} currentUserId={user.id} />
+              <ExpenseList
+                expenses={expenses}
+                currentUserId={user.id}
+                showGroup
+              />
             )}
           </CardContent>
         </Card>
@@ -181,32 +187,46 @@ export default async function ExpensesPage({
     );
   }
 
-  // Default view: split by scope (group vs not), then by settled state within each.
-  const grouped = expenses.filter((item) => item.expense.group_id !== null);
-  const general = expenses.filter((item) => item.expense.group_id === null);
+  // Default view: one section per group (every expense belongs to one), in order of
+  // most-recent activity (the list is already newest-first, so first-seen order holds).
+  const byGroup: { id: string; name: string; items: ExpenseListItem[] }[] = [];
+  const indexById = new Map<string, number>();
+  for (const item of expenses) {
+    const id = item.expense.group_id ?? 'unknown';
+    let idx = indexById.get(id);
+    if (idx === undefined) {
+      idx = byGroup.length;
+      indexById.set(id, idx);
+      byGroup.push({ id, name: item.groupName ?? 'Group', items: [] });
+    }
+    byGroup[idx]!.items.push(item);
+  }
+
+  // The owner's net standing in each group (> 0 owed to them, < 0 they owe). The
+  // ledger read behind getGroupBalances is request-cached, so fanning out is cheap.
+  const nets = await Promise.all(
+    byGroup.map(async (group) =>
+      group.id === 'unknown'
+        ? 0
+        : summarize(await getGroupBalances(group.id)).netCents,
+    ),
+  );
 
   return (
     <section className="space-y-6">
       {header}
       {filters}
 
-      {grouped.length > 0 ? (
+      {byGroup.map((group, index) => (
         <ScopeSection
-          title="Group expenses"
+          key={group.id}
+          title={group.name}
           icon={<Users2 className="h-4 w-4 text-muted-foreground" />}
-          items={grouped}
+          items={group.items}
           currentUserId={user.id}
+          netCents={nets[index] ?? 0}
         />
-      ) : null}
-
-      {general.length > 0 ? (
-        <ScopeSection
-          title="Non-group expenses"
-          icon={<Receipt className="h-4 w-4 text-muted-foreground" />}
-          items={general}
-          currentUserId={user.id}
-        />
-      ) : null}
+      ))}
     </section>
   );
 }
@@ -220,25 +240,29 @@ function ScopeSection({
   icon,
   items,
   currentUserId,
+  netCents,
 }: {
   title: string;
   icon: React.ReactNode;
   items: ExpenseListItem[];
   currentUserId: string;
+  /** The owner's net standing in this group: > 0 owed to them, < 0 they owe. */
+  netCents: number;
 }) {
   // Effective settled state (manual flag OR fully paid off, migration 0031), so a
   // balance the other account has settled moves into "Settled" and out of the
   // "to settle" total — matching the green check on each row.
   const outstanding = items.filter((item) => !item.fullySettled);
   const settled = items.filter((item) => item.fullySettled);
-  const outstandingTotal = outstanding.reduce(
+  // The amount already settled in this group: the total of its fully-settled expenses.
+  const settledTotal = settled.reduce(
     (sum, item) => sum + item.expense.amount_cents,
     0,
   );
 
   return (
     <Card>
-      <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
+      <CardHeader className="flex-row items-start justify-between gap-3 space-y-0 pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
           {icon}
           {title}
@@ -246,11 +270,15 @@ function ScopeSection({
             {items.length}
           </span>
         </CardTitle>
-        {outstanding.length > 0 ? (
-          <span className="text-sm font-medium tabular-nums text-muted-foreground">
-            <Money cents={outstandingTotal} /> to settle
-          </span>
-        ) : null}
+        {/* Your standing in this group, plus how much has already been settled here. */}
+        <span className="flex flex-col items-end gap-0.5 text-right sm:flex-row sm:items-center sm:gap-2">
+          <BalanceLabel netCents={netCents} />
+          {settledTotal > 0 ? (
+            <span className="text-xs tabular-nums text-muted-foreground">
+              <Money cents={settledTotal} /> settled
+            </span>
+          ) : null}
+        </span>
       </CardHeader>
       <CardContent className="space-y-5">
         {outstanding.length === 0 ? (

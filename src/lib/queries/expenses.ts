@@ -61,9 +61,9 @@ export interface ScopeMember {
   email: string | null;
 }
 
-/** A scope an expense can belong to: general (`id: null`) or a group. */
+/** A group scope an expense can belong to. Every expense belongs to a group. */
 export interface ExpenseScope {
-  id: string | null;
+  id: string;
   label: string;
   members: ScopeMember[];
 }
@@ -71,22 +71,30 @@ export interface ExpenseScope {
 /** Everything the add/edit expense form needs to render its choices. */
 export interface ExpenseFormData {
   selfMemberId: string | null;
+  /** The owner's Personal group — the default scope for a quick add. */
+  personalGroupId: string | null;
   scopes: ExpenseScope[];
+  /** The owner's full roster — for adding people inline / creating a group inline. */
+  allMembers: ScopeMember[];
 }
 
 /**
- * Build the choices for the expense form: the self-member id and the scopes the
- * expense can belong to — a general "Everyone" scope (`id: null`) of all the owner's
- * members, plus one scope per group (its members). The form surfaces a scope picker
- * whenever more than one scope exists; picking a group sets `group_id` so the expense
- * lands in that group's ledger (and its per-expense chat). A general expense keeps
- * `group_id` null and splits equally across the chosen people.
+ * Build the choices for the expense form: the self-member id, the owner's Personal
+ * group (the quick-add default), and one scope per group (its members). Every expense
+ * belongs to a group now — there is no ungrouped scope. Picking a group sets `group_id`
+ * so the expense lands in that group's ledger (and its per-expense chat) and splits
+ * equally across the chosen members. The owner's self-member is always available so
+ * they can pay/share even without an explicit `group_members` row.
  */
 export async function getExpenseFormData(): Promise<ExpenseFormData | null> {
   const user = await getUser();
   if (!user) return null;
 
   const supabase = createClient();
+  // Guarantee the owner has a Personal group before reading the group list, so the
+  // scope picker is never empty and a first-ever expense has a home.
+  const { data: personalGroupId } = await supabase.rpc('ensure_personal_group');
+
   const [selfMemberId, members, { data: groups }, { data: memberships }] =
     await Promise.all([
       getSelfMemberId(),
@@ -105,12 +113,6 @@ export async function getExpenseFormData(): Promise<ExpenseFormData | null> {
     email: m.email,
   });
   const memberById = new Map(members.map((m) => [m.id, m]));
-
-  const everyone: ExpenseScope = {
-    id: null,
-    label: 'Everyone',
-    members: members.map(toScopeMember),
-  };
 
   // One scope per group, its members resolved from the owner's roster. The owner's
   // self-member is always included so they can pay/share even if not an explicit
@@ -132,7 +134,12 @@ export async function getExpenseFormData(): Promise<ExpenseFormData | null> {
     return { id: group.id, label: group.name, members: scopeMembers };
   });
 
-  return { selfMemberId, scopes: [everyone, ...groupScopes] };
+  return {
+    selfMemberId,
+    personalGroupId: (personalGroupId as string | null) ?? null,
+    scopes: groupScopes,
+    allMembers: members.map(toScopeMember),
+  };
 }
 
 /**
@@ -226,8 +233,14 @@ export async function shapeExpenseList(
 
   // These reads are independent — run them concurrently rather than in a
   // waterfall so the list resolves in one round-trip's worth of latency.
-  const [categoriesById, payersById, { data: splitRows }, ownerNameById, statusById] =
-    await Promise.all([
+  const [
+    categoriesById,
+    payersById,
+    { data: splitRows },
+    ownerNameById,
+    statusById,
+    groupNameById,
+  ] = await Promise.all([
       fetchCategoriesById([
         ...new Set(expenses.map((expense) => expense.category_id)),
       ]),
@@ -243,6 +256,13 @@ export async function shapeExpenseList(
       // Payment-derived settled state (0031) so a list row reads settled the same on
       // every account. Empty when the migration isn't applied → manual flag stands.
       fetchSettlementStatus(expenses.map((expense) => expense.id)),
+      fetchGroupNamesById([
+        ...new Set(
+          expenses
+            .map((expense) => expense.group_id)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ]),
     ]);
 
   const countByExpense = new Map<string, number>();
@@ -264,6 +284,9 @@ export async function shapeExpenseList(
       category,
       payer,
       participantCount: countByExpense.get(expense.id) ?? 0,
+      groupName: expense.group_id
+        ? (groupNameById.get(expense.group_id) ?? null)
+        : null,
       isOwn,
       addedByName: isOwn ? null : (ownerNameById.get(expense.owner_id) ?? null),
       fullySettled:
@@ -291,6 +314,23 @@ async function fetchOwnerNamesById(
     .in('owner_id', ownerIds)
     .eq('is_self', true);
   return new Map((data ?? []).map((member) => [member.owner_id, member.name]));
+}
+
+/**
+ * Group names keyed by id, for the group chip on cross-context expense rows. RLS
+ * scopes this to groups the caller can read (own, or ones shared with them via 0023);
+ * an unreadable group simply degrades to no chip.
+ */
+async function fetchGroupNamesById(
+  groupIds: string[],
+): Promise<Map<string, string>> {
+  if (groupIds.length === 0) return new Map();
+  const supabase = createClient();
+  const { data } = await supabase
+    .from('groups')
+    .select('id, name')
+    .in('id', groupIds);
+  return new Map((data ?? []).map((group) => [group.id, group.name]));
 }
 
 /**

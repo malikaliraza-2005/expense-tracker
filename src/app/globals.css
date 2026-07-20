@@ -277,6 +277,40 @@
     bottom: env(safe-area-inset-bottom);
   }
 
+  /*
+   * DM/chat thread height. The thread is a self-contained frame (fixed header +
+   * scrolling messages + fixed composer), so it fills the viewport minus only the
+   * chrome around it: the 4rem sticky app header + 1.5rem `main` top padding above,
+   * and below it the 5.5rem + safe-area the bottom nav clears via `pb-safe-nav` on
+   * mobile (the nav is gone on md+, leaving just `md:pb-10`'s 2.5rem).
+   *
+   * Fallback (first paint / no visualViewport support): the full dynamic viewport.
+   */
+  .h-dm-thread {
+    height: calc(100dvh - 11rem - env(safe-area-inset-bottom));
+  }
+  /*
+   * Mobile: once `useVisualViewportHeight` measures the *visible* viewport, size
+   * the frame to it (`--visual-vh`) instead of `100dvh`, which doesn't shrink for
+   * the on-screen keyboard. That keeps the composer above the keyboard instead of
+   * behind it, while only the messages list scrolls. `--thread-chrome` collapses
+   * from 11rem to 5.5rem when the keyboard is up (the bottom nav is hidden behind
+   * it, so its clearance isn't needed).
+   */
+  @media (max-width: 767px) {
+    .h-dm-thread {
+      height: calc(
+        var(--visual-vh, 100dvh) - var(--thread-chrome, 11rem) -
+          env(safe-area-inset-bottom)
+      );
+    }
+  }
+  @media (min-width: 768px) {
+    .h-dm-thread {
+      height: calc(100dvh - 8rem);
+    }
+  }
+
   @keyframes shimmer {
     100% {
       transform: translateX(100%);

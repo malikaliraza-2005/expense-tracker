@@ -28,9 +28,8 @@ import type { Database } from '@/types/database.types';
  * Expense Server Actions. The only place expenses and their splits are written.
  * Every mutation:
  *   1. re-validates the input shape,
- *   2. re-derives the allowed member set on the server — a group's members for a
- *      group expense, or all of the owner's members otherwise — and rejects any
- *      payer/participant outside it,
+ *   2. re-derives the allowed member set on the server — the group's members plus
+ *      the owner's self-member — and rejects any payer/participant outside it,
  *   3. computes the concrete equal integer-cent shares with the split engine, and
  *   4. writes the expense + splits atomically via the migration-0010 RPC (which
  *      also re-verifies ownership of every referenced id).
@@ -55,18 +54,6 @@ async function getOwnerCurrency(
     .eq('id', ownerId)
     .single();
   return safeCurrency(data?.preferred_currency);
-}
-
-/** All of the owner's member ids. */
-async function getOwnerMemberIds(
-  supabase: Client,
-  ownerId: string,
-): Promise<Set<string>> {
-  const { data } = await supabase
-    .from('members')
-    .select('id')
-    .eq('owner_id', ownerId);
-  return new Set((data ?? []).map((row) => row.id));
 }
 
 /** The member ids belonging to a group (owner-scoped via RLS). */
@@ -112,26 +99,23 @@ async function getSelfMemberId(
 async function allowedMembers(
   supabase: Client,
   ownerId: string,
-  groupId: string | null,
+  groupId: string,
 ): Promise<{ ok: true; ids: Set<string> } | { ok: false; error: string }> {
-  if (groupId) {
-    const { data: group } = await supabase
-      .from('groups')
-      .select('id')
-      .eq('id', groupId)
-      .eq('owner_id', ownerId)
-      .maybeSingle();
-    if (!group) return { ok: false, error: 'Group not found.' };
+  const { data: group } = await supabase
+    .from('groups')
+    .select('id')
+    .eq('id', groupId)
+    .eq('owner_id', ownerId)
+    .maybeSingle();
+  if (!group) return { ok: false, error: 'Group not found.' };
 
-    const ids = await getGroupMemberIds(supabase, groupId);
-    if (ids.size === 0) {
-      return { ok: false, error: 'That group has no members.' };
-    }
-    const selfId = await getSelfMemberId(supabase, ownerId);
-    if (selfId) ids.add(selfId);
-    return { ok: true, ids };
+  const ids = await getGroupMemberIds(supabase, groupId);
+  if (ids.size === 0) {
+    return { ok: false, error: 'That group has no members.' };
   }
-  return { ok: true, ids: await getOwnerMemberIds(supabase, ownerId) };
+  const selfId = await getSelfMemberId(supabase, ownerId);
+  if (selfId) ids.add(selfId);
+  return { ok: true, ids };
 }
 
 /**
@@ -151,21 +135,14 @@ async function resolveSplitRows(
   if (!allowed.ok) return allowed;
 
   if (!allowed.ids.has(data.paidBy)) {
-    return {
-      ok: false,
-      error: data.groupId
-        ? 'The payer must be a member of this group.'
-        : 'The payer must be one of your members.',
-    };
+    return { ok: false, error: 'The payer must be a member of this group.' };
   }
 
   for (const id of data.memberIds) {
     if (!allowed.ids.has(id)) {
       return {
         ok: false,
-        error: data.groupId
-          ? 'Everyone sharing the expense must be a member of this group.'
-          : 'Everyone sharing the expense must be one of your members.',
+        error: 'Everyone sharing the expense must be a member of this group.',
       };
     }
   }

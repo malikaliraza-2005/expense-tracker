@@ -8,8 +8,10 @@ import { Check, Plus, UserPlus, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { createExpense, updateExpense } from '@/actions/expenses';
+import { addGroupMember } from '@/actions/groups';
 import { AutoDateTime } from '@/components/expenses/auto-datetime';
 import { CategorySelect } from '@/components/expenses/category-select';
+import { CreateGroupDialog } from '@/components/groups/create-group-dialog';
 import { InviteByEmailDialog } from '@/components/members/invite-dialog';
 import { PersonSearch } from '@/components/members/person-search';
 import { useCurrency } from '@/components/providers/currency-provider';
@@ -22,7 +24,7 @@ import {
   validateUpdateExpense,
   type CreateExpenseFormInput,
 } from '@/schemas/expense.schema';
-import type { Category } from '@/types/db';
+import type { Category, Group } from '@/types/db';
 import { cn } from '@/utils/cn';
 import { toISODate } from '@/utils/date';
 import { parseAmountToCents } from '@/utils/money';
@@ -36,12 +38,15 @@ export interface ScopeMember {
   email: string | null;
 }
 
-/** A scope the expense can belong to: general (`id: null`) or a group. */
+/** A group the expense can belong to. Every expense is group-based. */
 export interface ExpenseScope {
-  id: string | null;
+  id: string;
   label: string;
   members: ScopeMember[];
 }
+
+/** A "+ New group…" option value in the scope picker. */
+const NEW_GROUP_OPTION = '__new_group__';
 
 /** Existing values for edit mode. */
 export interface ExpenseFormInitial {
@@ -57,6 +62,7 @@ export interface ExpenseFormInitial {
 }
 
 type FieldErrors = {
+  groupId?: string;
   title?: string;
   amountCents?: string;
   categoryId?: string;
@@ -70,6 +76,10 @@ interface ExpenseFormProps {
   categories: Category[];
   scopes: ExpenseScope[];
   selfMemberId: string | null;
+  /** The owner's Personal group — the default scope for a quick add. */
+  personalGroupId: string | null;
+  /** The owner's full roster — for adding people inline and creating a group inline. */
+  allMembers: ScopeMember[];
   /** ISO `yyyy-mm-dd` default for the date field (create). */
   defaultDate: string;
   /** Pre-selected group scope on create (from `?group=`); ignored in edit. */
@@ -95,6 +105,8 @@ export function ExpenseForm({
   categories,
   scopes,
   selfMemberId,
+  personalGroupId,
+  allMembers,
   defaultDate,
   defaultGroupId,
   userId,
@@ -104,17 +116,26 @@ export function ExpenseForm({
   const [errors, setErrors] = React.useState<FieldErrors>({});
   const [isPending, startTransition] = React.useTransition();
 
-  // Which scope (general or a group) the expense belongs to. Edit uses the saved
-  // group; create can be pre-pointed at a group via `?group=`. The scope decides
+  // The groups this expense can belong to. Grows when a group is created inline.
+  const [scopeList, setScopeList] = React.useState<ExpenseScope[]>(scopes);
+
+  // Which group the expense belongs to. Edit uses the saved group; create can be
+  // pre-pointed via `?group=`, else defaults to the Personal group. The scope decides
   // both the expense's group_id and who can pay / share.
-  const initialScopeId = initial ? initial.groupId : (defaultGroupId ?? null);
-  const [scopeId, setScopeId] = React.useState<string | null>(initialScopeId);
+  const initialScopeId =
+    (initial ? initial.groupId : defaultGroupId) ??
+    personalGroupId ??
+    scopes[0]?.id ??
+    '';
+  const [scopeId, setScopeId] = React.useState<string>(initialScopeId);
   const initialScope =
     scopes.find((s) => s.id === initialScopeId) ?? scopes[0];
-  const isGeneral = scopeId === null;
 
-  // Everyone the expense can involve — the current scope's members, grown as
-  // people are added inline (general scope only).
+  // Whether the inline "New group" dialog is open.
+  const [newGroupOpen, setNewGroupOpen] = React.useState(false);
+
+  // Everyone the expense can involve — the current group's members, grown as
+  // people are added inline.
   const seed = initialScope?.members ?? [];
   const [roster, setRoster] = React.useState<ScopeMember[]>(seed);
 
@@ -177,13 +198,17 @@ export function ExpenseForm({
     });
   }
 
-  // Switch scope: swap the roster to the new scope's members, select them all,
-  // and keep the payer only if they're still available.
+  // Switch group: swap the roster to the new group's members, select them all, and
+  // keep the payer only if they're still available. The "+ New group…" sentinel opens
+  // the inline create dialog instead of changing the scope.
   function changeScope(value: string) {
-    const id = value === '' ? null : value;
-    const scope = scopes.find((s) => s.id === id) ?? scopes[0];
+    if (value === NEW_GROUP_OPTION) {
+      setNewGroupOpen(true);
+      return;
+    }
+    const scope = scopeList.find((s) => s.id === value) ?? scopeList[0];
     const scopeMembers = scope?.members ?? [];
-    setScopeId(id);
+    setScopeId(scope?.id ?? value);
     setRoster(scopeMembers);
     setSelected(new Set(scopeMembers.map((m) => m.id)));
     setPayer((prev) => {
@@ -196,9 +221,55 @@ export function ExpenseForm({
     setAdding(false);
   }
 
+  // A group just created inline: add it to the picker with its members (the people
+  // chosen in the dialog plus the owner's self-member), then select it as the current
+  // scope. Members come from the dialog directly so people created inline are included.
+  function handleGroupCreated({
+    group,
+    members,
+  }: {
+    group: Group;
+    memberIds: string[];
+    members: Person[];
+  }) {
+    const byId = new Map<string, ScopeMember>();
+    const self = allMembers.find((m) => m.id === selfMemberId);
+    if (self) byId.set(self.id, self);
+    for (const person of members) {
+      byId.set(person.id, {
+        id: person.id,
+        name: person.name,
+        isSelf: person.isSelf ?? false,
+        email: person.email,
+      });
+    }
+    const scopeMembers = [...byId.values()];
+    const scope: ExpenseScope = {
+      id: group.id,
+      label: group.name,
+      members: scopeMembers,
+    };
+    setScopeList((prev) =>
+      prev.some((s) => s.id === scope.id) ? prev : [...prev, scope],
+    );
+    setScopeId(scope.id);
+    setRoster(scopeMembers);
+    setSelected(new Set(scopeMembers.map((m) => m.id)));
+    setPayer((prev) =>
+      scopeMembers.some((m) => m.id === prev)
+        ? prev
+        : (selfMemberId ?? scopeMembers[0]?.id ?? ''),
+    );
+    setAdding(false);
+  }
+
   // Add a person to the split — whether picked from the search results or just
   // created. New people also join the roster; everyone gets selected. Deduped by
   // id, so re-adding someone already present is a no-op beyond selecting them.
+  //
+  // Every expense is group-based, so an added person must also be a member of the
+  // current group or the server would reject the expense — persist that membership
+  // now (also updating this scope so switching groups and back keeps them).
   function addToSplit(person: Person) {
     const member: ScopeMember = {
       id: person.id,
@@ -206,10 +277,30 @@ export function ExpenseForm({
       isSelf: person.isSelf ?? false,
       email: person.email,
     };
+    const isNewToRoster = !roster.some((m) => m.id === member.id);
     setRoster((prev) =>
       prev.some((m) => m.id === member.id) ? prev : [...prev, member],
     );
     setSelected((prev) => new Set(prev).add(member.id));
+
+    if (isNewToRoster && scopeId) {
+      setScopeList((prev) =>
+        prev.map((scope) =>
+          scope.id === scopeId && !scope.members.some((m) => m.id === member.id)
+            ? { ...scope, members: [...scope.members, member] }
+            : scope,
+        ),
+      );
+      // Persist the membership so the create/update action accepts them.
+      startTransition(async () => {
+        const result = await addGroupMember({
+          groupId: scopeId,
+          memberId: member.id,
+        });
+        if (!result.ok) toast.error(result.error);
+      });
+    }
+
     // Offer to also make this person a friend (an email invite that links their
     // account). Not for yourself — you're already the account.
     if (!member.isSelf) setFriendPrompt(member);
@@ -275,23 +366,36 @@ export function ExpenseForm({
 
   return (
     <form onSubmit={onSubmit} className="space-y-5" noValidate>
-      {scopes.length > 1 ? (
-        <div className="space-y-2">
-          <Label htmlFor="expense-scope">Group</Label>
-          <Select
-            id="expense-scope"
-            value={scopeId ?? ''}
-            onChange={(event) => changeScope(event.target.value)}
-            disabled={isPending}
-          >
-            {scopes.map((scope) => (
-              <option key={scope.id ?? 'general'} value={scope.id ?? ''}>
-                {scope.label}
-              </option>
-            ))}
-          </Select>
-        </div>
-      ) : null}
+      <div className="space-y-2">
+        <Label htmlFor="expense-scope">Group</Label>
+        <Select
+          id="expense-scope"
+          value={scopeId}
+          onChange={(event) => changeScope(event.target.value)}
+          disabled={isPending}
+          aria-invalid={Boolean(errors.groupId)}
+        >
+          {scopeList.map((scope) => (
+            <option key={scope.id} value={scope.id}>
+              {scope.label}
+            </option>
+          ))}
+          <option value={NEW_GROUP_OPTION}>+ New group…</option>
+        </Select>
+        {errors.groupId ? (
+          <p className="text-sm text-destructive">{errors.groupId}</p>
+        ) : null}
+      </div>
+
+      {/* Inline group creation from the "+ New group…" option. */}
+      <CreateGroupDialog
+        people={allMembers.filter((m) => !m.isSelf)}
+        inviteRef={userId}
+        open={newGroupOpen}
+        onOpenChange={setNewGroupOpen}
+        showTrigger={false}
+        onCreated={handleGroupCreated}
+      />
 
       <div className="space-y-2">
         <Label htmlFor="expense-amount">Amount</Label>
@@ -357,7 +461,7 @@ export function ExpenseForm({
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label htmlFor="expense-payer">Paid by</Label>
-          {isGeneral && !adding ? (
+          {!adding ? (
             <button
               type="button"
               onClick={() => setAdding(true)}
@@ -370,9 +474,9 @@ export function ExpenseForm({
           ) : null}
         </div>
 
-        {isGeneral && adding ? (
+        {adding ? (
           <PersonSearch
-            people={roster}
+            people={allMembers}
             selectedIds={participantIds}
             onAdd={addToSplit}
             inviteRef={userId}

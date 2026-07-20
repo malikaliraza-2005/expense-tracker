@@ -217,14 +217,29 @@ export function ExpenseDetail({
                 Boolean(selfMemberId) &&
                 member.id !== selfMemberId &&
                 net !== 0;
+              // This member's share of THIS expense is fully settled when nothing
+              // remains on it (manually settled, or covered by allocated payments).
+              const memberSettled = participant.remainingCents === 0;
               return (
                 <li key={member.id} className="space-y-3 py-3 first:pt-0">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                     <span className="flex min-w-0 items-center gap-2">
                       <Avatar name={member.name} className="h-8 w-8" />
                       <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium">
-                          {name}
+                        <span className="flex items-center gap-2">
+                          <span className="truncate text-sm font-medium">
+                            {name}
+                          </span>
+                          {memberSettled ? (
+                            <Badge variant="success" className="shrink-0">
+                              <Check className="h-3 w-3" />
+                              Settled
+                            </Badge>
+                          ) : (
+                            <Badge variant="warning" className="shrink-0">
+                              Not settled
+                            </Badge>
+                          )}
                         </span>
                         {member.email ? (
                           <span className="block truncate text-xs text-muted-foreground">

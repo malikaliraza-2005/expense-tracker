@@ -32,17 +32,20 @@ import { ROUTES } from '@/constants/routes';
 import type { GroupType } from '@/types/db';
 
 /**
- * Rename / retype or delete a group, from an overflow menu. Delete confirms and
- * explains that the group's expenses are kept (moved to general), not deleted.
+ * Rename / retype or delete a group, from an overflow menu. Delete confirms and warns
+ * that the group's expenses are deleted with it. The owner's Personal group can't be
+ * deleted (it's the default home for quick-adds), so it only offers Rename.
  */
 export function GroupActions({
   groupId,
   groupName,
   groupType,
+  isPersonal = false,
 }: {
   groupId: string;
   groupName: string;
   groupType: GroupType;
+  isPersonal?: boolean;
 }) {
   const router = useRouter();
   const [renameOpen, setRenameOpen] = React.useState(false);
@@ -109,16 +112,18 @@ export function GroupActions({
             <Pencil className="h-4 w-4" />
             Rename
           </DropdownMenuItem>
-          <DropdownMenuItem
-            className="gap-2 text-destructive focus:text-destructive"
-            onSelect={(event) => {
-              event.preventDefault();
-              setDeleteOpen(true);
-            }}
-          >
-            <Trash2 className="h-4 w-4" />
-            Delete
-          </DropdownMenuItem>
+          {!isPersonal ? (
+            <DropdownMenuItem
+              className="gap-2 text-destructive focus:text-destructive"
+              onSelect={(event) => {
+                event.preventDefault();
+                setDeleteOpen(true);
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete
+            </DropdownMenuItem>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -186,9 +191,8 @@ export function GroupActions({
           <DialogHeader>
             <DialogTitle>Delete {groupName}?</DialogTitle>
             <DialogDescription>
-              The group is removed. Its expenses are kept and moved to your
-              general (ungrouped) activity — nothing is lost. This cannot be
-              undone.
+              This permanently deletes the group and <strong>all of its
+              expenses and settlements</strong>. This cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

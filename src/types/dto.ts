@@ -286,6 +286,8 @@ export interface ExpenseListItem {
   payer: Member;
   /** Number of participants (expense_splits rows) on the expense. */
   participantCount: number;
+  /** Name of the group this expense belongs to, for cross-context rows. Null if unreadable. */
+  groupName: string | null;
   /**
    * True when the viewer owns this expense; false when it was shared with them (they
    * participate in someone else's). Both appear in one list, so rows must say which.

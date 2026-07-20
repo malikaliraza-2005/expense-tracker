@@ -49,6 +49,8 @@ export default async function NewExpensePage({
             categories={categories}
             scopes={formData.scopes}
             selfMemberId={formData.selfMemberId}
+            personalGroupId={formData.personalGroupId}
+            allMembers={formData.allMembers}
             defaultDate={toISODate(new Date())}
             defaultGroupId={defaultGroupId}
             userId={user?.id}

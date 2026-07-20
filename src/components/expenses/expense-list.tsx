@@ -4,6 +4,7 @@ import { Check, ChevronRight } from 'lucide-react';
 
 import { LocalDate } from '@/components/common/local-date';
 import { Money } from '@/components/common/money';
+import { Badge } from '@/components/ui/badge';
 import { categoryIcon, colorForKey } from '@/constants/categories';
 import type { ExpenseListItem } from '@/types/dto';
 import { cn } from '@/utils/cn';
@@ -19,14 +20,17 @@ import { cn } from '@/utils/cn';
 export function ExpenseList({
   expenses,
   currentUserId,
+  showGroup = false,
 }: {
   expenses: ExpenseListItem[];
   /** The viewing user's id; used to label the payer "You" from the reader's view. */
   currentUserId?: string;
+  /** Show each expense's group as a chip — for cross-context lists (dashboard, search). */
+  showGroup?: boolean;
 }) {
   return (
     <ul className="space-y-2">
-      {expenses.map(({ expense, category, payer, participantCount, isOwn, addedByName, fullySettled }) => {
+      {expenses.map(({ expense, category, payer, participantCount, groupName, isOwn, addedByName, fullySettled }) => {
         const Icon = categoryIcon(category.icon);
         const color = colorForKey(category.icon || category.name);
         // "You" is the reader's own member: their claimed member (linked_user_id),
@@ -60,10 +64,24 @@ export function ExpenseList({
               </span>
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-1.5 truncate font-medium">
-                  {settled ? (
-                    <Check className="h-3.5 w-3.5 shrink-0 text-income" />
-                  ) : null}
                   <span className="truncate">{expense.title}</span>
+                  {/* Whether every member has settled their share of this expense. */}
+                  {settled ? (
+                    <Badge variant="success" className="shrink-0">
+                      <Check className="h-3 w-3" />
+                      Settled
+                    </Badge>
+                  ) : (
+                    <Badge variant="warning" className="shrink-0">
+                      Not settled
+                    </Badge>
+                  )}
+                  {/* Cross-context lists say which group the expense belongs to. */}
+                  {showGroup && groupName ? (
+                    <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                      {groupName}
+                    </span>
+                  ) : null}
                   {/* Shared with the reader — say whose it is, or the row is
                       indistinguishable from their own. */}
                   {!isOwn && addedByName ? (
