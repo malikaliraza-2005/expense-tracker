@@ -45,6 +45,98 @@ export interface DirectedDebt {
   amountCents: number;
 }
 
+/** Per-member aggregate within a scope: what they paid, their share, and net. */
+export interface MemberStat {
+  memberId: string;
+  /** Total value of expenses this member fronted (paid for). */
+  paidCents: number;
+  /** This member's total share across the scope's expenses. */
+  owesCents: number;
+  /**
+   * Settlement-aware net: paidCents − owesCents, plus settlements they paid,
+   * minus settlements they received. > 0 they are owed; < 0 they owe.
+   */
+  netCents: number;
+}
+
+/**
+ * Per-member figures for ONE expense: what they fronted, what they owe, and what
+ * is still outstanding on this expense. Unlike {@link MemberStat} these are
+ * single-expense facts, not a cross-scope net.
+ */
+export interface ExpenseMemberFigure {
+  memberId: string;
+  /** Amount this member fronted for the expense — the full total if the payer. */
+  paidCents: number;
+  /** This member's equal share of the expense. */
+  owedCents: number;
+  /**
+   * Still-outstanding amount on this expense: 0 once the expense is settled;
+   * otherwise the payer is owed back everyone else's shares, and each other
+   * participant still owes their own share.
+   */
+  remainingCents: number;
+}
+
+/** Inputs for {@link expenseMemberLedger}: one expense's total, payer, and splits. */
+export interface ExpenseLedgerInput {
+  amountCents: number;
+  payerId: string;
+  splits: ReadonlyArray<{ memberId: string; shareCents: number }>;
+  /** The expense's manual settled flag (migration 0011). Zeroes remaining. */
+  settled: boolean;
+  /**
+   * Payment-derived amount settled per DEBTOR member on THIS expense, keyed by
+   * member id (migration 0031's oldest-first allocation of the settlement ledger).
+   * A member's still-owed share is reduced by their allocated amount; absent = 0.
+   * This is what lets a recorded payment — from either account, including a
+   * third-party payment the viewer can't see — clear the expense's remaining
+   * identically on every involved account. The manual `settled` flag overrides it.
+   */
+  settledByMember?: Readonly<Record<string, number>>;
+}
+
+/**
+ * Per-participant paid / owed / remaining for a single expense, in split order.
+ *
+ * Single-payer, equal-split model: the payer fronts the whole total (`paidCents`
+ * = amount) while everyone else fronts nothing; each participant owes their
+ * `shareCents`. Outstanding is reduced by any payments allocated to this expense
+ * (`settledByMember`) and forced to nil by the manual settled flag: a non-payer
+ * still owes their share minus what they've paid toward it, and the payer is owed
+ * back the sum of the others' still-remaining shares — so the payer's remaining
+ * equals the sum of the others', by construction.
+ */
+export function expenseMemberLedger(
+  input: ExpenseLedgerInput,
+): ExpenseMemberFigure[] {
+  const alloc = input.settledByMember ?? {};
+  // A non-payer's still-owed amount: their share less what's been paid toward it
+  // (clamped into [0, share]); nil once the expense is manually settled.
+  const remainingForDebtor = (memberId: string, shareCents: number): number => {
+    if (input.settled) return 0;
+    const paid = Math.min(Math.max(alloc[memberId] ?? 0, 0), shareCents);
+    return shareCents - paid;
+  };
+  // The payer is owed back whatever the other participants still owe.
+  const payerRemaining = input.splits.reduce(
+    (sum, s) =>
+      s.memberId === input.payerId
+        ? sum
+        : sum + remainingForDebtor(s.memberId, s.shareCents),
+    0,
+  );
+
+  return input.splits.map(({ memberId, shareCents }) => {
+    const isPayer = memberId === input.payerId;
+    const paidCents = isPayer ? input.amountCents : 0;
+    const remainingCents = isPayer
+      ? payerRemaining
+      : remainingForDebtor(memberId, shareCents);
+    return { memberId, paidCents, owedCents: shareCents, remainingCents };
+  });
+}
+
 /** Aggregate figures for the dashboard header. */
 export interface BalanceSummary {
   /** Sum of every positive net — the total others owe me. */
@@ -210,6 +302,51 @@ export function computeLedger(rows: BalanceRows): DirectedDebt[] {
 /** The full pairwise ledger restricted to a single group. */
 export function groupLedger(groupId: string, rows: BalanceRows): DirectedDebt[] {
   return computeLedger(restrictToGroup(rows, groupId));
+}
+
+/**
+ * Per-member paid / share / net within a single group. `paidCents` is the full
+ * value of expenses the member fronted; `owesCents` is their total share; and
+ * `netCents` is the settlement-aware net (paid − share, plus settlements paid,
+ * minus settlements received) — the figure that clears when they settle up.
+ * Every member appearing in the group's expenses or settlements is included,
+ * even when square, so the Members page can list a zero balance. Sorted by id.
+ */
+export function groupMemberStats(
+  groupId: string,
+  rows: BalanceRows,
+): MemberStat[] {
+  const scoped = restrictToGroup(rows, groupId);
+  const expenseById = new Map(scoped.expenses.map((e) => [e.id, e]));
+
+  const paid = new Map<string, number>();
+  const share = new Map<string, number>();
+  const settled = new Map<string, number>(); // +what they paid, −what they got
+
+  for (const split of scoped.splits) {
+    const expense = expenseById.get(split.expense_id);
+    if (!expense) continue;
+    addTo(share, split.member_id, split.share_cents); // their consumption
+    addTo(paid, expense.paid_by, split.share_cents); // the payer fronted it
+  }
+  for (const s of scoped.settlements) {
+    addTo(settled, s.payer_id, s.amount_cents);
+    addTo(settled, s.receiver_id, -s.amount_cents);
+  }
+
+  const ids = new Set<string>([
+    ...paid.keys(),
+    ...share.keys(),
+    ...settled.keys(),
+  ]);
+  return [...ids]
+    .map((memberId) => {
+      const paidCents = paid.get(memberId) ?? 0;
+      const owesCents = share.get(memberId) ?? 0;
+      const netCents = paidCents - owesCents + (settled.get(memberId) ?? 0);
+      return { memberId, paidCents, owesCents, netCents };
+    })
+    .sort((a, b) => a.memberId.localeCompare(b.memberId));
 }
 
 /** Aggregate a list of balances into you-owe / you-are-owed / net totals. */

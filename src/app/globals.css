@@ -15,7 +15,7 @@
 
 @layer base {
   :root {
-    /* Light theme — clean, soft, tinted with the same blue family. */
+    /* Light theme — a clean off-white mirror of the black/emerald system. */
     --background: 210 40% 98%;
     --foreground: 222 47% 11%;
 
@@ -25,81 +25,113 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    --primary: 221 90% 50%;
+    /* Emerald primary (#10B981) with a darker emerald (#059669) hover. */
+    --primary: 160 84% 39%;
     --primary-foreground: 0 0% 100%;
+    --primary-hover: 161 94% 30%;
 
-    --secondary: 214 32% 95%;
+    --secondary: 210 20% 96%;
     --secondary-foreground: 222 47% 15%;
 
-    --muted: 214 32% 95%;
-    --muted-foreground: 215 18% 42%;
+    --muted: 210 20% 96%;
+    --muted-foreground: 240 4% 46%;
 
-    --accent: 221 96% 96%;
-    --accent-foreground: 221 90% 42%;
+    --accent: 160 60% 94%;
+    --accent-foreground: 161 84% 26%;
 
-    --destructive: 0 78% 55%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 214 25% 90%;
-    --input: 214 25% 88%;
-    --ring: 221 90% 50%;
+    --border: 214 20% 90%;
+    --input: 214 20% 86%;
+    --ring: 160 84% 39%;
 
-    /* Semantic accents (shared vocabulary across both themes). */
-    --neon: 221 90% 50%;
-    --purple: 265 84% 58%;
-    --cyan: 193 96% 40%;
-    --income: 152 62% 40%;
-    --expense: 0 78% 55%;
-    --warning: 32 95% 48%;
+    /* Semantic accents (shared vocabulary across both themes). --purple and
+       --cyan are retained only as aliases for older tone APIs, remapped into the
+       scheme (blue / emerald) so no surface renders an off-palette hue. */
+    --neon: 160 84% 39%;
+    --purple: 217 91% 60%; /* → scheme blue */
+    --cyan: 160 84% 39%; /* → scheme emerald */
+    --income: 142 71% 45%; /* #22C55E — positive balances / income */
+    --expense: 0 84% 60%; /* #EF4444 — expenses / negative balances */
+    --warning: 38 92% 50%; /* #F59E0B — warnings */
+    --info: 217 91% 60%; /* #3B82F6 — informational */
+
+    /*
+     * Categorical chart palette — an emerald-led, fixed hue order validated for
+     * colour-blind separation on the light surface (dataviz skill). Assigned in
+     * order, never cycled; segments/bars pull --chart-1..6 by index.
+     */
+    --chart-1: #059669;
+    --chart-2: #2a78d6;
+    --chart-3: #e87ba4;
+    --chart-4: #eda100;
+    --chart-5: #4a3aa7;
+    --chart-6: #eb6834;
 
     /* Glass + glow surfaces. */
     --glass: 0 0% 100%;
-    --glass-border: 214 30% 88%;
-    --glow: 213 94% 52%;
+    --glass-border: 214 25% 88%;
+    --glow: 160 84% 39%;
 
-    --radius: 0.9rem;
+    --radius: 0.625rem;
   }
 
   .dark {
-    /* Dark theme — the premium neon hero. */
-    --background: 225 40% 5%;
+    /* Black & emerald — the premium hero. Matte-black canvas (#0B0B0C),
+       charcoal cards (#171717), subtle borders (#2E2E2E), white text
+       (#F8FAFC) over muted grey (#A1A1AA), emerald accent (#10B981). */
+    --background: 240 4% 5%;
     --foreground: 210 40% 98%;
 
-    --card: 224 33% 9%;
+    --card: 0 0% 9%;
     --card-foreground: 210 40% 98%;
 
-    --popover: 224 38% 7%;
+    --popover: 0 0% 10%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 221 100% 56%;
+    --primary: 160 84% 39%;
     --primary-foreground: 0 0% 100%;
+    --primary-hover: 161 94% 30%;
 
-    --secondary: 222 28% 14%;
+    --secondary: 0 0% 14%;
     --secondary-foreground: 210 40% 98%;
 
-    --muted: 223 28% 13%;
-    --muted-foreground: 217 20% 65%;
+    --muted: 0 0% 14%;
+    --muted-foreground: 240 5% 65%;
 
-    --accent: 222 33% 16%;
+    --accent: 0 0% 15%;
     --accent-foreground: 210 40% 98%;
 
-    --destructive: 0 84% 62%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 28% 17%;
-    --input: 220 28% 20%;
-    --ring: 221 100% 58%;
+    --border: 0 0% 18%;
+    --input: 0 0% 20%;
+    --ring: 160 84% 39%;
 
-    --neon: 221 100% 56%;
-    --purple: 265 89% 68%;
-    --cyan: 193 96% 48%;
-    --income: 152 70% 46%;
-    --expense: 0 84% 63%;
-    --warning: 38 96% 56%;
+    /* Semantic accents (dark variants). --purple/--cyan aliased into the scheme
+       (blue / emerald) — see the light block. */
+    --neon: 160 84% 39%;
+    --purple: 213 94% 68%; /* → scheme blue */
+    --cyan: 160 84% 39%; /* → scheme emerald */
+    --income: 142 71% 45%; /* #22C55E — positive balances / income */
+    --expense: 0 84% 60%; /* #EF4444 — expenses / negative balances */
+    --warning: 38 92% 50%; /* #F59E0B — warnings */
+    --info: 217 91% 60%; /* #3B82F6 — informational */
 
-    --glass: 224 36% 11%;
-    --glass-border: 216 34% 24%;
-    --glow: 221 100% 56%;
+    /* Categorical chart palette — same hue order, re-stepped for the dark
+       surface and validated for CVD separation (dataviz skill). */
+    --chart-1: #059669;
+    --chart-2: #3987e5;
+    --chart-3: #d55181;
+    --chart-4: #c98500;
+    --chart-5: #9085e9;
+    --chart-6: #d95926;
+
+    --glass: 0 0% 9%;
+    --glass-border: 0 0% 18%;
+    --glow: 160 84% 39%;
   }
 }
 
@@ -243,6 +275,40 @@
   }
   .bottom-safe {
     bottom: env(safe-area-inset-bottom);
+  }
+
+  /*
+   * DM/chat thread height. The thread is a self-contained frame (fixed header +
+   * scrolling messages + fixed composer), so it fills the viewport minus only the
+   * chrome around it: the 4rem sticky app header + 1.5rem `main` top padding above,
+   * and below it the 5.5rem + safe-area the bottom nav clears via `pb-safe-nav` on
+   * mobile (the nav is gone on md+, leaving just `md:pb-10`'s 2.5rem).
+   *
+   * Fallback (first paint / no visualViewport support): the full dynamic viewport.
+   */
+  .h-dm-thread {
+    height: calc(100dvh - 11rem - env(safe-area-inset-bottom));
+  }
+  /*
+   * Mobile: once `useVisualViewportHeight` measures the *visible* viewport, size
+   * the frame to it (`--visual-vh`) instead of `100dvh`, which doesn't shrink for
+   * the on-screen keyboard. That keeps the composer above the keyboard instead of
+   * behind it, while only the messages list scrolls. `--thread-chrome` collapses
+   * from 11rem to 5.5rem when the keyboard is up (the bottom nav is hidden behind
+   * it, so its clearance isn't needed).
+   */
+  @media (max-width: 767px) {
+    .h-dm-thread {
+      height: calc(
+        var(--visual-vh, 100dvh) - var(--thread-chrome, 11rem) -
+          env(safe-area-inset-bottom)
+      );
+    }
+  }
+  @media (min-width: 768px) {
+    .h-dm-thread {
+      height: calc(100dvh - 8rem);
+    }
   }
 
   @keyframes shimmer {

@@ -8,18 +8,27 @@ import { signUp } from '@/actions/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { validateSignUp } from '@/schemas/auth.schema';
+import { PASSWORD_MIN_LENGTH, validateSignUp } from '@/schemas/auth.schema';
 
 type FieldErrors = { email?: string; password?: string; fullName?: string };
 
 /**
  * Registration form (Client Component). Validation lives in the shared schema;
  * the `signUp` Server Action performs the write and the signup trigger creates
- * the profile row. On success with a session the action redirects; when email
- * confirmation is required it returns a flag and we prompt the user to check
- * their inbox.
+ * the profile row. On success with a session the action redirects (to `next`
+ * when present — e.g. back to an invite accept page); when email confirmation is
+ * required it returns a flag and we prompt the user to check their inbox.
+ *
+ * `defaultEmail` prefills the email when arriving from an invite link; `next` is
+ * a same-origin relative path threaded through sign-up (and email confirmation).
  */
-export function RegisterForm() {
+export function RegisterForm({
+  defaultEmail,
+  next,
+}: {
+  defaultEmail?: string;
+  next?: string;
+}) {
   const [errors, setErrors] = React.useState<FieldErrors>({});
   const [isPending, startTransition] = React.useTransition();
 
@@ -38,7 +47,7 @@ export function RegisterForm() {
     setErrors({});
 
     startTransition(async () => {
-      const result = await signUp(parsed.data);
+      const result = await signUp(parsed.data, next);
       // On immediate sign-in the action redirects; we only reach here otherwise.
       if (result && !result.ok) {
         // Surface an existing-account error inline on the email field too.
@@ -80,6 +89,7 @@ export function RegisterForm() {
           type="email"
           autoComplete="email"
           placeholder="you@example.com"
+          defaultValue={defaultEmail}
           aria-invalid={Boolean(errors.email)}
           disabled={isPending}
         />
@@ -96,11 +106,16 @@ export function RegisterForm() {
           type="password"
           autoComplete="new-password"
           aria-invalid={Boolean(errors.password)}
+          aria-describedby="password-hint"
           disabled={isPending}
         />
         {errors.password ? (
           <p className="text-sm text-destructive">{errors.password}</p>
-        ) : null}
+        ) : (
+          <p id="password-hint" className="text-sm text-muted-foreground">
+            Use at least {PASSWORD_MIN_LENGTH} characters.
+          </p>
+        )}
       </div>
 
       <Button type="submit" className="w-full" disabled={isPending}>

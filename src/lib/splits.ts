@@ -179,6 +179,43 @@ export function splitPercentage(
   return { ok: true, shares };
 }
 
+/**
+ * Recompute an expense's equal splits after removing one participant, enforcing
+ * the removal guards. Returns the fresh equal shares over the remaining members
+ * (remainder redistributed by {@link splitEqual}), or an expected failure when
+ * the removal isn't allowed:
+ *   - the removed member isn't a participant,
+ *   - the removed member is the payer (a payer can't owe themselves), or
+ *   - the removal would leave fewer than two participants (nothing to split).
+ *
+ * Pure and math-only, so the removal path is unit-verifiable without a database.
+ */
+export function recomputeEqualAfterRemoval(input: {
+  amountCents: number;
+  memberIds: ReadonlyArray<string>;
+  removeId: string;
+  payerId: string;
+}): SplitResult {
+  const { amountCents, memberIds, removeId, payerId } = input;
+
+  if (!memberIds.includes(removeId)) {
+    return { ok: false, error: 'That person isn’t part of this expense.' };
+  }
+  if (removeId === payerId) {
+    return { ok: false, error: 'You can’t remove the person who paid.' };
+  }
+
+  const remaining = memberIds.filter((id) => id !== removeId);
+  if (remaining.length < 2) {
+    return {
+      ok: false,
+      error: 'An expense needs at least two people to split between.',
+    };
+  }
+
+  return splitEqual(amountCents, remaining);
+}
+
 /** Dispatch a {@link SplitInput} to the matching split function. */
 export function computeSplit(input: SplitInput): SplitResult {
   switch (input.type) {

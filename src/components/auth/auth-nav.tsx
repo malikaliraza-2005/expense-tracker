@@ -24,12 +24,12 @@ export function AuthNav() {
         <Link
           href={ROUTES.login}
           aria-label="Expense Tracker home"
-          className="rounded-md outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"
+          className="min-w-0 rounded-md outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Logo size="sm" />
         </Link>
 
-        <nav className="flex items-center gap-2">
+        <nav className="flex shrink-0 items-center gap-2">
           <Button
             asChild
             size="sm"

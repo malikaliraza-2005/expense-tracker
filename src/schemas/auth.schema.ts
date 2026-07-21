@@ -7,8 +7,8 @@
  * them again before any write (server input is always treated as untrusted).
  */
 
-/** Supabase's default minimum password length. */
-export const PASSWORD_MIN_LENGTH = 6;
+/** Minimum password length enforced at sign-up (stricter than Supabase's 6). */
+export const PASSWORD_MIN_LENGTH = 8;
 export const PASSWORD_MAX_LENGTH = 72; // bcrypt hard limit
 export const FULL_NAME_MAX_LENGTH = 80;
 

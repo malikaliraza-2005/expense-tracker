@@ -44,7 +44,11 @@ export function RecentExpenses({
             </div>
           </div>
         ) : (
-          <ExpenseList expenses={expenses} currentUserId={currentUserId} />
+          <ExpenseList
+            expenses={expenses}
+            currentUserId={currentUserId}
+            showGroup
+          />
         )}
       </CardContent>
     </Card>

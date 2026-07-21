@@ -11,7 +11,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          'bg-primary text-primary-foreground shadow-glow-sm hover:-translate-y-0.5 hover:shadow-glow active:translate-y-0',
+          'bg-primary text-primary-foreground shadow-glow-sm hover:-translate-y-0.5 hover:bg-primary-hover hover:shadow-glow active:translate-y-0',
         gradient:
           'bg-gradient-neon text-white shadow-glow-sm hover:-translate-y-0.5 hover:shadow-glow active:translate-y-0',
         destructive:

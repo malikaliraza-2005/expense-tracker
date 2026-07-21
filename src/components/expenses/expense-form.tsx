@@ -7,10 +7,13 @@ import { useRouter } from 'next/navigation';
 import { Check, Plus, UserPlus, X } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { addMember } from '@/actions/members';
 import { createExpense, updateExpense } from '@/actions/expenses';
+import { addGroupMember } from '@/actions/groups';
 import { AutoDateTime } from '@/components/expenses/auto-datetime';
 import { CategorySelect } from '@/components/expenses/category-select';
+import { CreateGroupDialog } from '@/components/groups/create-group-dialog';
+import { InviteByEmailDialog } from '@/components/members/invite-dialog';
+import { PersonSearch } from '@/components/members/person-search';
 import { useCurrency } from '@/components/providers/currency-provider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,24 +24,29 @@ import {
   validateUpdateExpense,
   type CreateExpenseFormInput,
 } from '@/schemas/expense.schema';
-import type { Category } from '@/types/db';
+import type { Category, Group } from '@/types/db';
 import { cn } from '@/utils/cn';
 import { toISODate } from '@/utils/date';
 import { parseAmountToCents } from '@/utils/money';
+import type { Person } from '@/utils/people';
 
 /** A member available to pay or share within the chosen scope. */
 export interface ScopeMember {
   id: string;
   name: string;
   isSelf: boolean;
+  email: string | null;
 }
 
-/** A scope the expense can belong to: general (`id: null`) or a group. */
+/** A group the expense can belong to. Every expense is group-based. */
 export interface ExpenseScope {
-  id: string | null;
+  id: string;
   label: string;
   members: ScopeMember[];
 }
+
+/** A "+ New group…" option value in the scope picker. */
+const NEW_GROUP_OPTION = '__new_group__';
 
 /** Existing values for edit mode. */
 export interface ExpenseFormInitial {
@@ -54,6 +62,7 @@ export interface ExpenseFormInitial {
 }
 
 type FieldErrors = {
+  groupId?: string;
   title?: string;
   amountCents?: string;
   categoryId?: string;
@@ -67,8 +76,16 @@ interface ExpenseFormProps {
   categories: Category[];
   scopes: ExpenseScope[];
   selfMemberId: string | null;
+  /** The owner's Personal group — the default scope for a quick add. */
+  personalGroupId: string | null;
+  /** The owner's full roster — for adding people inline and creating a group inline. */
+  allMembers: ScopeMember[];
   /** ISO `yyyy-mm-dd` default for the date field (create). */
   defaultDate: string;
+  /** Pre-selected group scope on create (from `?group=`); ignored in edit. */
+  defaultGroupId?: string | null;
+  /** Current owner's id, used to tag the invite link with a referral hint. */
+  userId?: string;
   initial?: ExpenseFormInitial;
 }
 
@@ -88,16 +105,38 @@ export function ExpenseForm({
   categories,
   scopes,
   selfMemberId,
+  personalGroupId,
+  allMembers,
   defaultDate,
+  defaultGroupId,
+  userId,
   initial,
 }: ExpenseFormProps) {
   const router = useRouter();
   const [errors, setErrors] = React.useState<FieldErrors>({});
   const [isPending, startTransition] = React.useTransition();
 
-  // Everyone the expense can involve. Seeded from the (single) scope's members
-  // and grown as people are added inline.
-  const seed = scopes[0]?.members ?? [];
+  // The groups this expense can belong to. Grows when a group is created inline.
+  const [scopeList, setScopeList] = React.useState<ExpenseScope[]>(scopes);
+
+  // Which group the expense belongs to. Edit uses the saved group; create can be
+  // pre-pointed via `?group=`, else defaults to the Personal group. The scope decides
+  // both the expense's group_id and who can pay / share.
+  const initialScopeId =
+    (initial ? initial.groupId : defaultGroupId) ??
+    personalGroupId ??
+    scopes[0]?.id ??
+    '';
+  const [scopeId, setScopeId] = React.useState<string>(initialScopeId);
+  const initialScope =
+    scopes.find((s) => s.id === initialScopeId) ?? scopes[0];
+
+  // Whether the inline "New group" dialog is open.
+  const [newGroupOpen, setNewGroupOpen] = React.useState(false);
+
+  // Everyone the expense can involve — the current group's members, grown as
+  // people are added inline.
+  const seed = initialScope?.members ?? [];
   const [roster, setRoster] = React.useState<ScopeMember[]>(seed);
 
   const [title, setTitle] = React.useState(initial?.title ?? '');
@@ -122,10 +161,15 @@ export function ExpenseForm({
     return new Set(seed.map((m) => m.id));
   });
 
-  // Inline "add person" state.
+  // Whether the inline person search is open.
   const [adding, setAdding] = React.useState(false);
-  const [newName, setNewName] = React.useState('');
-  const [addPending, setAddPending] = React.useState(false);
+
+  // The person just added to the split we're offering to make a friend, plus
+  // whether the invite dialog is open. Cleared when dismissed.
+  const [friendPrompt, setFriendPrompt] = React.useState<ScopeMember | null>(
+    null,
+  );
+  const [friendDialogOpen, setFriendDialogOpen] = React.useState(false);
 
   const { format, symbol } = useCurrency();
 
@@ -154,35 +198,119 @@ export function ExpenseForm({
     });
   }
 
-  function onAddPerson() {
-    const name = newName.trim();
-    if (!name) return;
-    setAddPending(true);
-    startTransition(async () => {
-      const result = await addMember({ name });
-      setAddPending(false);
-      if (!result.ok) {
-        toast.error(result.error);
-        return;
+  // Switch group: swap the roster to the new group's members, select them all, and
+  // keep the payer only if they're still available. The "+ New group…" sentinel opens
+  // the inline create dialog instead of changing the scope.
+  function changeScope(value: string) {
+    if (value === NEW_GROUP_OPTION) {
+      setNewGroupOpen(true);
+      return;
+    }
+    const scope = scopeList.find((s) => s.id === value) ?? scopeList[0];
+    const scopeMembers = scope?.members ?? [];
+    setScopeId(scope?.id ?? value);
+    setRoster(scopeMembers);
+    setSelected(new Set(scopeMembers.map((m) => m.id)));
+    setPayer((prev) => {
+      if (scopeMembers.some((m) => m.id === prev)) return prev;
+      if (selfMemberId && scopeMembers.some((m) => m.id === selfMemberId)) {
+        return selfMemberId;
       }
-      const member: ScopeMember = {
-        id: result.data.id,
-        name: result.data.name,
-        isSelf: result.data.is_self,
-      };
-      setRoster((prev) => [...prev, member]);
-      setSelected((prev) => new Set(prev).add(member.id));
-      setNewName('');
-      setAdding(false);
-      toast.success(`Added ${member.name}.`);
+      return scopeMembers[0]?.id ?? '';
     });
+    setAdding(false);
+  }
+
+  // A group just created inline: add it to the picker with its members (the people
+  // chosen in the dialog plus the owner's self-member), then select it as the current
+  // scope. Members come from the dialog directly so people created inline are included.
+  function handleGroupCreated({
+    group,
+    members,
+  }: {
+    group: Group;
+    memberIds: string[];
+    members: Person[];
+  }) {
+    const byId = new Map<string, ScopeMember>();
+    const self = allMembers.find((m) => m.id === selfMemberId);
+    if (self) byId.set(self.id, self);
+    for (const person of members) {
+      byId.set(person.id, {
+        id: person.id,
+        name: person.name,
+        isSelf: person.isSelf ?? false,
+        email: person.email,
+      });
+    }
+    const scopeMembers = [...byId.values()];
+    const scope: ExpenseScope = {
+      id: group.id,
+      label: group.name,
+      members: scopeMembers,
+    };
+    setScopeList((prev) =>
+      prev.some((s) => s.id === scope.id) ? prev : [...prev, scope],
+    );
+    setScopeId(scope.id);
+    setRoster(scopeMembers);
+    setSelected(new Set(scopeMembers.map((m) => m.id)));
+    setPayer((prev) =>
+      scopeMembers.some((m) => m.id === prev)
+        ? prev
+        : (selfMemberId ?? scopeMembers[0]?.id ?? ''),
+    );
+    setAdding(false);
+  }
+
+  // Add a person to the split — whether picked from the search results or just
+  // created. New people also join the roster; everyone gets selected. Deduped by
+  // id, so re-adding someone already present is a no-op beyond selecting them.
+  //
+  // Every expense is group-based, so an added person must also be a member of the
+  // current group or the server would reject the expense — persist that membership
+  // now (also updating this scope so switching groups and back keeps them).
+  function addToSplit(person: Person) {
+    const member: ScopeMember = {
+      id: person.id,
+      name: person.name,
+      isSelf: person.isSelf ?? false,
+      email: person.email,
+    };
+    const isNewToRoster = !roster.some((m) => m.id === member.id);
+    setRoster((prev) =>
+      prev.some((m) => m.id === member.id) ? prev : [...prev, member],
+    );
+    setSelected((prev) => new Set(prev).add(member.id));
+
+    if (isNewToRoster && scopeId) {
+      setScopeList((prev) =>
+        prev.map((scope) =>
+          scope.id === scopeId && !scope.members.some((m) => m.id === member.id)
+            ? { ...scope, members: [...scope.members, member] }
+            : scope,
+        ),
+      );
+      // Persist the membership so the create/update action accepts them.
+      startTransition(async () => {
+        const result = await addGroupMember({
+          groupId: scopeId,
+          memberId: member.id,
+        });
+        if (!result.ok) toast.error(result.error);
+      });
+    }
+
+    // Offer to also make this person a friend (an email invite that links their
+    // account). Not for yourself — you're already the account.
+    if (!member.isSelf) setFriendPrompt(member);
   }
 
   function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const payload: CreateExpenseFormInput = {
-      groupId: null,
+      groupId: scopeId,
       title,
       description: null,
       amountCents,
@@ -238,6 +366,37 @@ export function ExpenseForm({
 
   return (
     <form onSubmit={onSubmit} className="space-y-5" noValidate>
+      <div className="space-y-2">
+        <Label htmlFor="expense-scope">Group</Label>
+        <Select
+          id="expense-scope"
+          value={scopeId}
+          onChange={(event) => changeScope(event.target.value)}
+          disabled={isPending}
+          aria-invalid={Boolean(errors.groupId)}
+        >
+          {scopeList.map((scope) => (
+            <option key={scope.id} value={scope.id}>
+              {scope.label}
+            </option>
+          ))}
+          <option value={NEW_GROUP_OPTION}>+ New group…</option>
+        </Select>
+        {errors.groupId ? (
+          <p className="text-sm text-destructive">{errors.groupId}</p>
+        ) : null}
+      </div>
+
+      {/* Inline group creation from the "+ New group…" option. */}
+      <CreateGroupDialog
+        people={allMembers.filter((m) => !m.isSelf)}
+        inviteRef={userId}
+        open={newGroupOpen}
+        onOpenChange={setNewGroupOpen}
+        showTrigger={false}
+        onCreated={handleGroupCreated}
+      />
+
       <div className="space-y-2">
         <Label htmlFor="expense-amount">Amount</Label>
         <div
@@ -316,48 +475,63 @@ export function ExpenseForm({
         </div>
 
         {adding ? (
-          <div className="flex items-center gap-2">
-            <Input
-              value={newName}
-              onChange={(event) => setNewName(event.target.value)}
-              placeholder="Name of person to split with"
-              disabled={addPending}
-              autoFocus
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  onAddPerson();
-                }
-                if (event.key === 'Escape') {
-                  setAdding(false);
-                  setNewName('');
-                }
-              }}
-            />
-            <Button
-              type="button"
-              size="icon"
-              variant="gradient"
-              aria-label="Save person"
-              onClick={onAddPerson}
-              disabled={addPending || !newName.trim()}
-            >
-              <UserPlus />
-            </Button>
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              aria-label="Cancel"
-              onClick={() => {
-                setAdding(false);
-                setNewName('');
-              }}
-              disabled={addPending}
-            >
-              <X />
-            </Button>
+          <PersonSearch
+            people={allMembers}
+            selectedIds={participantIds}
+            onAdd={addToSplit}
+            inviteRef={userId}
+            onClose={() => setAdding(false)}
+            disabled={isPending}
+            autoFocus
+            suppressInvitePrompt
+          />
+        ) : null}
+
+        {/* After adding someone, offer to also add them to your friends. */}
+        {friendPrompt ? (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/20 bg-primary/[0.04] px-3 py-2">
+            <span className="min-w-0 text-xs text-muted-foreground">
+              Add{' '}
+              <span className="font-medium text-foreground">
+                {friendPrompt.name}
+              </span>{' '}
+              to your friends? Invite them so they can see the split and settle
+              up.
+            </span>
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setFriendDialogOpen(true)}
+                disabled={isPending}
+                className="inline-flex shrink-0 items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary outline-none transition-colors hover:bg-primary/20 focus-visible:ring-2 focus-visible:ring-ring [&_svg]:h-3.5 [&_svg]:w-3.5"
+              >
+                <UserPlus />
+                Add friend
+              </button>
+              <button
+                type="button"
+                onClick={() => setFriendPrompt(null)}
+                aria-label="Dismiss"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&_svg]:h-3.5 [&_svg]:w-3.5"
+              >
+                <X />
+              </button>
+            </div>
           </div>
+        ) : null}
+
+        {friendPrompt ? (
+          <InviteByEmailDialog
+            open={friendDialogOpen}
+            onOpenChange={(open) => {
+              setFriendDialogOpen(open);
+              // Retire the prompt once the dialog is dismissed either way.
+              if (!open) setFriendPrompt(null);
+            }}
+            memberId={friendPrompt.id}
+            memberName={friendPrompt.name}
+            defaultEmail={friendPrompt.email}
+          />
         ) : null}
 
         <Select
@@ -405,7 +579,7 @@ export function ExpenseForm({
                   disabled={isPending}
                   aria-pressed={isOn}
                   className={cn(
-                    'inline-flex min-h-11 items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium outline-none transition-all focus-visible:ring-2 focus-visible:ring-ring',
+                    'inline-flex min-h-11 max-w-full items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium outline-none transition-all focus-visible:ring-2 focus-visible:ring-ring',
                     isOn
                       ? 'border-primary bg-primary/15 text-foreground shadow-glow-sm'
                       : 'border-border/60 bg-background/30 text-muted-foreground hover:border-primary/40 hover:text-foreground',
@@ -413,7 +587,7 @@ export function ExpenseForm({
                 >
                   <span
                     className={cn(
-                      'inline-flex h-4 w-4 items-center justify-center rounded-full border transition-colors [&_svg]:h-3 [&_svg]:w-3',
+                      'inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors [&_svg]:h-3 [&_svg]:w-3',
                       isOn
                         ? 'border-primary bg-primary text-primary-foreground'
                         : 'border-muted-foreground/50',
@@ -421,7 +595,14 @@ export function ExpenseForm({
                   >
                     {isOn ? <Check /> : null}
                   </span>
-                  {memberLabel(member)}
+                  <span className="flex min-w-0 flex-col items-start leading-tight">
+                    <span className="truncate">{memberLabel(member)}</span>
+                    {!member.isSelf && member.email ? (
+                      <span className="max-w-[12rem] truncate text-[11px] font-normal text-muted-foreground">
+                        {member.email}
+                      </span>
+                    ) : null}
+                  </span>
                 </button>
               );
             })}

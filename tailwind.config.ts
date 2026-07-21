@@ -25,6 +25,7 @@ const config: Config = {
         primary: {
           DEFAULT: 'hsl(var(--primary))',
           foreground: 'hsl(var(--primary-foreground))',
+          hover: 'hsl(var(--primary-hover))',
         },
         secondary: {
           DEFAULT: 'hsl(var(--secondary))',
@@ -57,6 +58,7 @@ const config: Config = {
         income: 'hsl(var(--income))',
         expense: 'hsl(var(--expense))',
         warning: 'hsl(var(--warning))',
+        info: 'hsl(var(--info))',
         glass: 'hsl(var(--glass))',
       },
       borderRadius: {
@@ -70,7 +72,7 @@ const config: Config = {
         sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
       },
       backgroundImage: {
-        'gradient-neon': 'linear-gradient(120deg, hsl(var(--primary)), hsl(var(--cyan)))',
+        'gradient-neon': 'linear-gradient(120deg, hsl(var(--primary)), hsl(var(--info)))',
         'gradient-purple':
           'linear-gradient(120deg, hsl(var(--purple)), hsl(var(--primary)))',
         'gradient-income':

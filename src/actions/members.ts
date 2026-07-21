@@ -42,7 +42,11 @@ export async function addMember(
 
   const { data, error } = await supabase
     .from('members')
-    .insert({ owner_id: user.id, name: parsed.data.name })
+    .insert({
+      owner_id: user.id,
+      name: parsed.data.name,
+      email: parsed.data.email,
+    })
     .select()
     .single();
   if (error || !data) return { ok: false, error: GENERIC_ERROR };
@@ -68,7 +72,7 @@ export async function renameMember(
 
   const { data, error } = await supabase
     .from('members')
-    .update({ name: parsed.data.name })
+    .update({ name: parsed.data.name, email: parsed.data.email })
     .eq('id', parsed.data.memberId)
     .select()
     .single();

@@ -4,29 +4,45 @@ import { Check, ChevronRight } from 'lucide-react';
 
 import { LocalDate } from '@/components/common/local-date';
 import { Money } from '@/components/common/money';
+import { Badge } from '@/components/ui/badge';
 import { categoryIcon, colorForKey } from '@/constants/categories';
 import type { ExpenseListItem } from '@/types/dto';
 import { cn } from '@/utils/cn';
 
 /**
- * Expense list (presentational, Phase 4). Each expense is a tappable neon row
- * linking to its detail view — a colour-coded category glyph, the title, meta
- * line (payer · date · people), and the total. Rows lift and glow on hover.
+ * Expense list (presentational). Each expense is a tappable neon row linking to its
+ * detail view — a colour-coded category glyph, the title, meta line (payer · date ·
+ * people), and the total. Rows lift and glow on hover.
+ *
+ * A list can mix the reader's own expenses with ones shared with them, so a shared row
+ * is tagged with who added it — otherwise the two are indistinguishable.
  */
 export function ExpenseList({
   expenses,
+  currentUserId,
+  showGroup = false,
 }: {
   expenses: ExpenseListItem[];
-  /** Accepted for call-site compatibility; the "You" label uses `is_self`. */
+  /** The viewing user's id; used to label the payer "You" from the reader's view. */
   currentUserId?: string;
+  /** Show each expense's group as a chip — for cross-context lists (dashboard, search). */
+  showGroup?: boolean;
 }) {
   return (
     <ul className="space-y-2">
-      {expenses.map(({ expense, category, payer, participantCount }) => {
+      {expenses.map(({ expense, category, payer, participantCount, groupName, isOwn, addedByName, fullySettled }) => {
         const Icon = categoryIcon(category.icon);
         const color = colorForKey(category.icon || category.name);
-        const payerName = payer.is_self ? 'You' : payer.name;
-        const settled = Boolean(expense.settled_at);
+        // "You" is the reader's own member: their claimed member (linked_user_id),
+        // or their self-member on an expense they own. On a shared expense the
+        // owner's self-member is NOT the reader, so it must not read as "You".
+        const payerIsMe =
+          (currentUserId != null && payer.linked_user_id === currentUserId) ||
+          (expense.owner_id === currentUserId && payer.is_self);
+        const payerName = payerIsMe ? 'You' : payer.name;
+        // Manual flag OR fully paid off (migration 0031) — reads the same on every
+        // account the expense is shared with.
+        const settled = fullySettled;
         return (
           <li key={expense.id}>
             <Link
@@ -48,10 +64,31 @@ export function ExpenseList({
               </span>
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-1.5 truncate font-medium">
-                  {settled ? (
-                    <Check className="h-3.5 w-3.5 shrink-0 text-income" />
-                  ) : null}
                   <span className="truncate">{expense.title}</span>
+                  {/* Whether every member has settled their share of this expense. */}
+                  {settled ? (
+                    <Badge variant="success" className="shrink-0">
+                      <Check className="h-3 w-3" />
+                      Settled
+                    </Badge>
+                  ) : (
+                    <Badge variant="warning" className="shrink-0">
+                      Not settled
+                    </Badge>
+                  )}
+                  {/* Cross-context lists say which group the expense belongs to. */}
+                  {showGroup && groupName ? (
+                    <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                      {groupName}
+                    </span>
+                  ) : null}
+                  {/* Shared with the reader — say whose it is, or the row is
+                      indistinguishable from their own. */}
+                  {!isOwn && addedByName ? (
+                    <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                      added by {addedByName}
+                    </span>
+                  ) : null}
                 </p>
                 <p className="truncate text-sm text-muted-foreground">
                   {payerName} paid ·{' '}

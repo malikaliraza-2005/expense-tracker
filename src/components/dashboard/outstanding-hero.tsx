@@ -44,7 +44,7 @@ export function OutstandingHero({
 
           <div
             className={cn(
-              'mt-3 text-4xl font-bold tracking-tight tabular-nums sm:text-5xl',
+              'mt-3 break-words text-3xl font-bold tracking-tight tabular-nums sm:text-4xl md:text-5xl',
               allSettled ? 'text-income' : 'text-foreground',
             )}
           >
@@ -138,7 +138,7 @@ function MiniStat({
         {icon}
         {label}
       </div>
-      <p className={cn('mt-1 text-lg font-semibold tabular-nums', color)}>
+      <p className={cn('mt-1 truncate text-base font-semibold tabular-nums sm:text-lg', color)}>
         {format(value)}
       </p>
     </div>

@@ -67,7 +67,7 @@ export function StatCard({
   return (
     <Card
       className={cn(
-        'group relative overflow-hidden p-5 transition-all duration-300 hover:-translate-y-1',
+        'group relative overflow-hidden p-4 transition-all duration-300 hover:-translate-y-1 sm:p-5',
         t.glow,
         className,
       )}
@@ -83,7 +83,7 @@ export function StatCard({
           <Icon className="h-[18px] w-[18px]" />
         </span>
       </div>
-      <div className={cn('mt-3 text-2xl font-semibold tabular-nums sm:text-3xl', t.text)}>
+      <div className={cn('mt-3 truncate text-xl font-semibold tabular-nums sm:text-2xl lg:text-3xl', t.text)}>
         {typeof cents === 'number' ? (
           <AnimatedNumber value={cents} currency />
         ) : (

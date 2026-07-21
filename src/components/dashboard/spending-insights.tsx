@@ -5,9 +5,18 @@ import { TrendingUp } from 'lucide-react';
 import { DonutChart } from '@/components/charts/donut-chart';
 import { useCurrency } from '@/components/providers/currency-provider';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { categoryIcon, colorForKey } from '@/constants/categories';
+import { CHART_COLORS, categoryIcon } from '@/constants/categories';
 import type { CategorySpend } from '@/types/dto';
 import { cn } from '@/utils/cn';
+
+/**
+ * Donut/legend colour by rank position. Fixed order, never cycled — assigning by
+ * index (not a per-category hash) keeps neighbouring segments on the validated,
+ * colour-blind-safe adjacent pairs (dataviz skill). "Other" always reads muted.
+ */
+function chartColor(index: number): string {
+  return CHART_COLORS[index] ?? 'hsl(var(--muted-foreground))';
+}
 
 /**
  * Spending insights — an animated donut of spend by category beside a ranked
@@ -27,10 +36,10 @@ export function SpendingInsights({
     .slice(5)
     .reduce((sum, c) => sum + c.totalCents, 0);
 
-  const segments = top.map((c) => ({
+  const segments = top.map((c, index) => ({
     label: c.name,
     value: c.totalCents,
-    color: colorForKey(c.icon || c.name),
+    color: chartColor(index),
   }));
   if (restTotal > 0) {
     segments.push({
@@ -63,10 +72,10 @@ export function SpendingInsights({
             centerLabel="Total spend"
           />
           <ul className="w-full flex-1 space-y-2.5">
-            {top.map((c) => {
+            {top.map((c, index) => {
               const Icon = categoryIcon(c.icon);
               const share = total > 0 ? Math.round((c.totalCents / total) * 100) : 0;
-              const color = colorForKey(c.icon || c.name);
+              const color = chartColor(index);
               return (
                 <li key={c.name} className="flex items-center gap-3">
                   <span

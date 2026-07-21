@@ -1,14 +1,10 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
-
-import { ArrowLeft } from 'lucide-react';
 
 import { PageHeader } from '@/components/common/page-header';
 import { ExpenseForm } from '@/components/expenses/expense-form';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { ROUTES } from '@/constants/routes';
+import { getUser } from '@/lib/auth';
 import { listCategories } from '@/lib/queries/categories';
 import { getExpenseFormData } from '@/lib/queries/expenses';
 import { toISODate } from '@/utils/date';
@@ -20,22 +16,27 @@ export const metadata: Metadata = { title: 'New expense' };
  * and categories, then renders the shared expense form. New people can be added
  * inline from the form itself.
  */
-export default async function NewExpensePage() {
-  const [formData, categories] = await Promise.all([
+export default async function NewExpensePage({
+  searchParams,
+}: {
+  searchParams: { group?: string };
+}) {
+  const [formData, categories, user] = await Promise.all([
     getExpenseFormData(),
     listCategories(),
+    getUser(),
   ]);
   if (!formData) notFound();
 
+  // A `?group=` that matches a real scope pre-points the form at that group.
+  const groupParam = searchParams.group?.trim();
+  const defaultGroupId = formData.scopes.some((scope) => scope.id === groupParam)
+    ? groupParam ?? null
+    : null;
+
   return (
     <section className="mx-auto max-w-xl space-y-6">
-      <Button asChild variant="ghost" size="sm" className="-ml-2 w-fit">
-        <Link href={ROUTES.expenses}>
-          <ArrowLeft />
-          Back to expenses
-        </Link>
-      </Button>
-
+      {/* No bespoke back link: the app header's back arrow covers every page. */}
       <PageHeader
         title="Add expense"
         description="Enter the details, then choose how to split it."
@@ -48,7 +49,11 @@ export default async function NewExpensePage() {
             categories={categories}
             scopes={formData.scopes}
             selfMemberId={formData.selfMemberId}
+            personalGroupId={formData.personalGroupId}
+            allMembers={formData.allMembers}
             defaultDate={toISODate(new Date())}
+            defaultGroupId={defaultGroupId}
+            userId={user?.id}
           />
         </CardContent>
       </Card>

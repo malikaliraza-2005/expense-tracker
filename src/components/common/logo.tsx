@@ -42,7 +42,7 @@ export function Logo({
   className,
 }: LogoProps) {
   return (
-    <span className={cn('inline-flex items-center gap-2.5', className)}>
+    <span className={cn('inline-flex min-w-0 items-center gap-2.5', className)}>
       <span
         aria-hidden="true"
         className={cn(
@@ -66,7 +66,7 @@ export function Logo({
       {showWordmark ? (
         <span
           className={cn(
-            'font-semibold tracking-tight text-foreground',
+            'min-w-0 truncate font-semibold tracking-tight text-foreground',
             WORDMARK_SIZES[size],
           )}
         >

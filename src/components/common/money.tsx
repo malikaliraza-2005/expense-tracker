@@ -63,9 +63,8 @@ export function BalanceLabel({
     <span
       className={cn(
         'text-sm font-medium tabular-nums',
-        owedToUser
-          ? 'text-emerald-600 dark:text-emerald-500'
-          : 'text-destructive',
+        // Green = positive/owed-to-you, red = negative/you-owe (semantic tokens).
+        owedToUser ? 'text-income' : 'text-expense',
         className,
       )}
     >

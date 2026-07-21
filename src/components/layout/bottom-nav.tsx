@@ -5,7 +5,12 @@ import { usePathname } from 'next/navigation';
 
 import { Plus } from 'lucide-react';
 
-import { PRIMARY_NAV, isActiveRoute } from '@/components/layout/nav-config';
+import {
+  PRIMARY_NAV,
+  badgeLabel,
+  isActiveRoute,
+  type NavBadges,
+} from '@/components/layout/nav-config';
 import { ROUTES } from '@/constants/routes';
 import { cn } from '@/utils/cn';
 
@@ -17,7 +22,7 @@ import { cn } from '@/utils/cn';
  * (`layoutId`), and by an icon-colour + label shift. Hidden on `md+`, where the
  * desktop top bar takes over.
  */
-export function BottomNav() {
+export function BottomNav({ badges }: { badges?: NavBadges }) {
   const pathname = usePathname();
 
   // Split the primary items evenly around the centre "Add" action.
@@ -37,6 +42,7 @@ export function BottomNav() {
             key={item.href}
             item={item}
             active={isActiveRoute(pathname, item.href)}
+            count={badges?.[item.href] ?? 0}
           />
         ))}
 
@@ -47,6 +53,7 @@ export function BottomNav() {
             key={item.href}
             item={item}
             active={isActiveRoute(pathname, item.href)}
+            count={badges?.[item.href] ?? 0}
           />
         ))}
       </div>
@@ -57,31 +64,43 @@ export function BottomNav() {
 function NavTab({
   item,
   active,
+  count,
 }: {
   item: (typeof PRIMARY_NAV)[number];
   active: boolean;
+  count: number;
 }) {
   const Icon = item.icon;
   return (
     <Link
       href={item.href}
       aria-current={active ? 'page' : undefined}
-      className="group relative flex flex-1 flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-xl px-1 py-1.5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       {active && (
         <span className="absolute inset-0 -z-10 rounded-xl bg-primary/12 ring-1 ring-inset ring-primary/25" />
       )}
-      <Icon
-        className={cn(
-          'h-5 w-5 transition-all duration-200 group-active:scale-90',
-          active
-            ? 'text-primary drop-shadow-[0_0_6px_hsl(var(--glow)/0.6)]'
-            : 'text-muted-foreground group-hover:text-foreground',
-        )}
-      />
+      <span className="relative">
+        <Icon
+          className={cn(
+            'h-5 w-5 transition-all duration-200 group-active:scale-90',
+            active
+              ? 'text-primary drop-shadow-[0_0_6px_hsl(var(--glow)/0.6)]'
+              : 'text-muted-foreground group-hover:text-foreground',
+          )}
+        />
+        {count > 0 ? (
+          <span
+            aria-label={`${count} awaiting you`}
+            className="absolute -right-2 -top-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-white shadow-glow-sm"
+          >
+            {badgeLabel(count)}
+          </span>
+        ) : null}
+      </span>
       <span
         className={cn(
-          'text-[10px] font-medium tracking-tight transition-colors',
+          'w-full truncate text-center text-[10px] font-medium tracking-tight transition-colors',
           active ? 'text-primary' : 'text-muted-foreground',
         )}
       >

@@ -1,10 +1,10 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
-import { CheckCircle2, Plus, Receipt } from 'lucide-react';
+import { CheckCircle2, Plus, Receipt, SearchX, Users2 } from 'lucide-react';
 
 import { EmptyState } from '@/components/common/empty-state';
-import { Money } from '@/components/common/money';
+import { BalanceLabel, Money } from '@/components/common/money';
 import { PageHeader } from '@/components/common/page-header';
 import { ExpenseFilters } from '@/components/expenses/expense-filters';
 import { ExpenseList } from '@/components/expenses/expense-list';
@@ -12,48 +12,117 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ROUTES } from '@/constants/routes';
 import { requireUser } from '@/lib/auth';
-import { listExpenses } from '@/lib/queries/expenses';
+import { summarize } from '@/lib/balances';
+import { getGroupBalances } from '@/lib/queries/balances';
+import { listCategories } from '@/lib/queries/categories';
+import { listExpenses, normalizeSearchTerm } from '@/lib/queries/expenses';
+import { getMembers } from '@/lib/queries/members';
+import type { ExpenseListItem } from '@/types/dto';
 
 export const metadata: Metadata = { title: 'Expenses' };
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+interface ExpensesSearchParams {
+  sort?: string;
+  q?: string;
+  cat?: string;
+  who?: string;
+  status?: string;
+  from?: string;
+  to?: string;
+}
+
 /**
- * Expenses list page. Reads the owner's expenses and splits them into
- * "Outstanding" (not yet settled) and "Settled" sections. When everything is
- * settled, the outstanding section shows a celebratory all-settled state.
+ * Expenses list page. Shows every expense the user can see — their own and any shared
+ * with them (each row says which) — through the shared filter layer, so search /
+ * category / person / status / date-range / sort from the URL are all honoured.
+ *
+ * With no active filters the list is split by scope first — **Group expenses**, then
+ * **Non-group expenses** — because "who is this split with" is the question people
+ * actually navigate by; within each scope it splits Outstanding from Settled. With
+ * filters active it collapses to a single flat result set so matches are easy to scan.
  */
 export default async function ExpensesPage({
   searchParams,
 }: {
-  searchParams: { sort?: string };
+  searchParams: ExpensesSearchParams;
 }) {
   const user = await requireUser();
-  const sort = searchParams.sort === 'oldest' ? 'oldest' : 'newest';
-  const expenses = await listExpenses({ sort });
 
-  const outstanding = expenses.filter((e) => !e.expense.settled_at);
-  const settled = expenses.filter((e) => e.expense.settled_at);
-  const outstandingTotal = outstanding.reduce(
-    (sum, e) => sum + e.expense.amount_cents,
-    0,
+  // Parse and normalise every filter dimension from the URL.
+  const sort = searchParams.sort === 'oldest' ? 'oldest' : 'newest';
+  // Normalise to what the query will actually search on, so a term of only
+  // punctuation counts as no search (sectioned view, not an empty "Results").
+  const search = normalizeSearchTerm(searchParams.q);
+  const categoryId = Number.parseInt(searchParams.cat ?? '', 10);
+  const memberId = (searchParams.who ?? '').trim();
+  const status =
+    searchParams.status === 'outstanding' || searchParams.status === 'settled'
+      ? searchParams.status
+      : 'all';
+  const from = ISO_DATE.test(searchParams.from ?? '') ? searchParams.from! : '';
+  const to = ISO_DATE.test(searchParams.to ?? '') ? searchParams.to! : '';
+
+  const [expenses, categories, members] = await Promise.all([
+    listExpenses({
+      sort,
+      search,
+      categoryId: Number.isNaN(categoryId) ? undefined : categoryId,
+      memberId: memberId || undefined,
+      status,
+      from: from || undefined,
+      to: to || undefined,
+    }),
+    listCategories(),
+    getMembers(),
+  ]);
+
+  const hasActiveFilters =
+    Boolean(search || memberId || from || to) ||
+    (!Number.isNaN(categoryId) && searchParams.cat !== undefined) ||
+    status !== 'all';
+
+  const filters = (
+    <ExpenseFilters
+      sort={sort}
+      search={search}
+      categoryId={Number.isNaN(categoryId) ? '' : String(categoryId)}
+      memberId={memberId}
+      status={status}
+      from={from}
+      to={to}
+      categories={categories.map((category) => ({
+        value: String(category.id),
+        label: category.name,
+      }))}
+      members={members.map((member) => ({
+        value: member.id,
+        label: member.is_self ? 'You' : member.name,
+      }))}
+    />
   );
 
-  return (
-    <section className="space-y-6">
-      <PageHeader
-        eyebrow="Activity"
-        title="Expenses"
-        description="Everything you've added or been split into."
-        action={
-          <Button asChild variant="gradient">
-            <Link href={ROUTES.newExpense}>
-              <Plus />
-              Add expense
-            </Link>
-          </Button>
-        }
-      />
+  const header = (
+    <PageHeader
+      eyebrow="Activity"
+      title="Expenses"
+      description="Everything you've added or been split into."
+      action={
+        <Button asChild variant="gradient">
+          <Link href={ROUTES.newExpense}>
+            <Plus />
+            Add expense
+          </Link>
+        </Button>
+      }
+    />
+  );
 
-      {expenses.length === 0 ? (
+  if (expenses.length === 0 && !hasActiveFilters) {
+    return (
+      <section className="space-y-6">
+        {header}
         <EmptyState
           icon={<Receipt />}
           title="No expenses yet"
@@ -67,66 +136,182 @@ export default async function ExpensesPage({
             </Button>
           }
         />
-      ) : (
-        <>
-          <div className="flex justify-end">
-            <ExpenseFilters sort={sort} />
-          </div>
+      </section>
+    );
+  }
 
-          {/* Outstanding */}
-          <Card>
-            <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
-              <CardTitle className="flex items-center gap-2 text-base">
-                Outstanding
-                {outstanding.length > 0 ? (
-                  <span className="rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning">
-                    {outstanding.length}
-                  </span>
-                ) : null}
-              </CardTitle>
-              {outstanding.length > 0 ? (
-                <span className="text-sm font-medium tabular-nums text-muted-foreground">
-                  <Money cents={outstandingTotal} /> to settle
+  // Filters active: one flat, easy-to-scan result set.
+  if (hasActiveFilters) {
+    const total = expenses.reduce((sum, e) => sum + e.expense.amount_cents, 0);
+    return (
+      <section className="space-y-6">
+        {header}
+        {filters}
+        <Card>
+          <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              Results
+              <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
+                {expenses.length}
+              </span>
+            </CardTitle>
+            {expenses.length > 0 ? (
+              <span className="text-sm font-medium tabular-nums text-muted-foreground">
+                <Money cents={total} /> total
+              </span>
+            ) : null}
+          </CardHeader>
+          <CardContent>
+            {expenses.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 py-10 text-center">
+                <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground [&_svg]:h-7 [&_svg]:w-7">
+                  <SearchX />
                 </span>
-              ) : null}
-            </CardHeader>
-            <CardContent>
-              {outstanding.length === 0 ? (
-                <div className="flex flex-col items-center gap-3 py-8 text-center">
-                  <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-income/15 text-income ring-1 ring-inset ring-income/25 [&_svg]:h-7 [&_svg]:w-7">
-                    <CheckCircle2 />
-                  </span>
-                  <div>
-                    <p className="font-semibold">All settled up 🎉</p>
-                    <p className="text-sm text-muted-foreground">
-                      Every expense here has been marked settled.
-                    </p>
-                  </div>
+                <div>
+                  <p className="font-semibold">No matching expenses</p>
+                  <p className="text-sm text-muted-foreground">
+                    Try a different search or clear the filters.
+                  </p>
                 </div>
-              ) : (
-                <ExpenseList expenses={outstanding} currentUserId={user.id} />
-              )}
-            </CardContent>
-          </Card>
+              </div>
+            ) : (
+              <ExpenseList
+                expenses={expenses}
+                currentUserId={user.id}
+                showGroup
+              />
+            )}
+          </CardContent>
+        </Card>
+      </section>
+    );
+  }
 
-          {/* Settled */}
-          {settled.length > 0 ? (
-            <Card>
-              <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  Settled
-                  <span className="rounded-full bg-income/15 px-2 py-0.5 text-xs font-medium text-income">
-                    {settled.length}
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ExpenseList expenses={settled} currentUserId={user.id} />
-              </CardContent>
-            </Card>
-          ) : null}
-        </>
-      )}
+  // Default view: one section per group (every expense belongs to one), in order of
+  // most-recent activity (the list is already newest-first, so first-seen order holds).
+  const byGroup: { id: string; name: string; items: ExpenseListItem[] }[] = [];
+  const indexById = new Map<string, number>();
+  for (const item of expenses) {
+    const id = item.expense.group_id ?? 'unknown';
+    let idx = indexById.get(id);
+    if (idx === undefined) {
+      idx = byGroup.length;
+      indexById.set(id, idx);
+      byGroup.push({ id, name: item.groupName ?? 'Group', items: [] });
+    }
+    byGroup[idx]!.items.push(item);
+  }
+
+  // The owner's net standing in each group (> 0 owed to them, < 0 they owe). The
+  // ledger read behind getGroupBalances is request-cached, so fanning out is cheap.
+  const nets = await Promise.all(
+    byGroup.map(async (group) =>
+      group.id === 'unknown'
+        ? 0
+        : summarize(await getGroupBalances(group.id)).netCents,
+    ),
+  );
+
+  return (
+    <section className="space-y-6">
+      {header}
+      {filters}
+
+      {byGroup.map((group, index) => (
+        <ScopeSection
+          key={group.id}
+          title={group.name}
+          icon={<Users2 className="h-4 w-4 text-muted-foreground" />}
+          items={group.items}
+          currentUserId={user.id}
+          netCents={nets[index] ?? 0}
+        />
+      ))}
     </section>
+  );
+}
+
+/**
+ * One scope's expenses (group or non-group), split into Outstanding and Settled. The
+ * Outstanding heading carries the amount still to settle — the figure people scan for.
+ */
+function ScopeSection({
+  title,
+  icon,
+  items,
+  currentUserId,
+  netCents,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  items: ExpenseListItem[];
+  currentUserId: string;
+  /** The owner's net standing in this group: > 0 owed to them, < 0 they owe. */
+  netCents: number;
+}) {
+  // Effective settled state (manual flag OR fully paid off, migration 0031), so a
+  // balance the other account has settled moves into "Settled" and out of the
+  // "to settle" total — matching the green check on each row.
+  const outstanding = items.filter((item) => !item.fullySettled);
+  const settled = items.filter((item) => item.fullySettled);
+  // The amount already settled in this group: the total of its fully-settled expenses.
+  const settledTotal = settled.reduce(
+    (sum, item) => sum + item.expense.amount_cents,
+    0,
+  );
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-start justify-between gap-3 space-y-0 pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          {icon}
+          {title}
+          <span className="rounded-full bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary">
+            {items.length}
+          </span>
+        </CardTitle>
+        {/* Your standing in this group, plus how much has already been settled here. */}
+        <span className="flex flex-col items-end gap-0.5 text-right sm:flex-row sm:items-center sm:gap-2">
+          <BalanceLabel netCents={netCents} />
+          {settledTotal > 0 ? (
+            <span className="text-xs tabular-nums text-muted-foreground">
+              <Money cents={settledTotal} /> settled
+            </span>
+          ) : null}
+        </span>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {outstanding.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 py-6 text-center">
+            <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-income/15 text-income ring-1 ring-inset ring-income/25 [&_svg]:h-6 [&_svg]:w-6">
+              <CheckCircle2 />
+            </span>
+            <p className="text-sm text-muted-foreground">
+              All settled up here 🎉
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <SectionLabel>Outstanding · {outstanding.length}</SectionLabel>
+            <ExpenseList expenses={outstanding} currentUserId={currentUserId} />
+          </div>
+        )}
+
+        {settled.length > 0 ? (
+          <div className="space-y-2">
+            <SectionLabel>Settled · {settled.length}</SectionLabel>
+            <ExpenseList expenses={settled} currentUserId={currentUserId} />
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+      {children}
+    </p>
   );
 }

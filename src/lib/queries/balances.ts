@@ -6,11 +6,13 @@ import {
   computeLedger,
   groupBalances,
   groupLedger,
+  groupMemberStats,
   overallSummary,
   type BalanceRows,
   type BalanceSummary,
   type CounterpartyBalance,
   type DirectedDebt,
+  type MemberStat,
 } from '@/lib/balances';
 import { getUser } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
@@ -63,6 +65,16 @@ const getBalanceContext = cache(async (): Promise<BalanceContext> => {
   };
 });
 
+/**
+ * The ledger rows visible to the caller, shaped for the balance engine. RLS decides
+ * the scope: your own rows, plus what 0015/0021 share with you as a participant. Use
+ * with {@link balanceWith} to net any two members from one source of truth.
+ */
+export async function getBalanceRows(): Promise<BalanceRows> {
+  const { rows } = await getBalanceContext();
+  return rows;
+}
+
 /** The owner's non-zero net balances with every member. */
 export async function getBalances(): Promise<CounterpartyBalance[]> {
   const { me, rows } = await getBalanceContext();
@@ -77,11 +89,55 @@ export async function getMemberBalance(memberId: string): Promise<number> {
   return balanceWith(me, memberId, rows);
 }
 
-/** The owner's non-zero net balances within a single group. */
+/**
+ * The member representing the viewer inside `groupId`'s ledger: their self-member when
+ * they own the group, otherwise the group member linked to their account.
+ *
+ * A group lives in its owner's ledger, and a participant appears there as a member
+ * linked to their account — not as their own self-member. Computing a participant's
+ * group balances from their self-member would net an empty set and show zeros, so the
+ * reference point has to follow whose ledger it is.
+ */
+export const getGroupViewerMemberId = cache(
+  async (groupId: string): Promise<string | null> => {
+    const user = await getUser();
+    if (!user) return null;
+
+    const supabase = createClient();
+    const { data: group } = await supabase
+      .from('groups')
+      .select('owner_id')
+      .eq('id', groupId)
+      .maybeSingle();
+    if (!group) return null;
+    if (group.owner_id === user.id) return getSelfMemberId();
+
+    // A participant: find which of the group's members is me.
+    const { data: memberships } = await supabase
+      .from('group_members')
+      .select('member_id')
+      .eq('group_id', groupId);
+    const ids = (memberships ?? []).map((row) => row.member_id);
+    if (ids.length === 0) return null;
+
+    const { data: mine } = await supabase
+      .from('members')
+      .select('id')
+      .in('id', ids)
+      .eq('linked_user_id', user.id)
+      .maybeSingle();
+    return mine?.id ?? null;
+  },
+);
+
+/** The viewer's non-zero net balances within a single group. */
 export async function getGroupBalances(
   groupId: string,
 ): Promise<CounterpartyBalance[]> {
-  const { me, rows } = await getBalanceContext();
+  const [me, { rows }] = await Promise.all([
+    getGroupViewerMemberId(groupId),
+    getBalanceContext(),
+  ]);
   if (!me) return [];
   return groupBalances(me, groupId, rows);
 }
@@ -93,6 +149,15 @@ export async function getGroupLedgerDebts(
   const { me, rows } = await getBalanceContext();
   if (!me) return [];
   return groupLedger(groupId, rows);
+}
+
+/** Per-member paid / share / net figures within a single group. */
+export async function getGroupMemberStats(
+  groupId: string,
+): Promise<MemberStat[]> {
+  const { me, rows } = await getBalanceContext();
+  if (!me) return [];
+  return groupMemberStats(groupId, rows);
 }
 
 /** The full who-owes-whom ledger across all of the owner's activity. */
@@ -114,3 +179,76 @@ export async function getSelfMemberId(): Promise<string | null> {
   const { me } = await getBalanceContext();
   return me;
 }
+
+/**
+ * A balance the current user has inside *someone else's* ledger — the other side of
+ * the single-owner model.
+ */
+export interface SharedBalance {
+  /** The member representing ME in their ledger (the settle target). */
+  memberId: string;
+  /** The account that owns that ledger. */
+  ownerId: string;
+  /** That account's display name (their self-member's name). */
+  counterpartyName: string;
+  /** Net from MY perspective: > 0 they owe me; < 0 I owe them. Never 0. */
+  netCents: number;
+}
+
+/**
+ * The current user's balances inside other people's ledgers.
+ *
+ * In the single-owner model an expense lives in the ledger of whoever recorded it, and
+ * the other participant appears there as a *member* linked to their account (A's "Bob"
+ * IS account B). So a user's balance with A isn't in their own ledger at all — it's
+ * the net between A's self-member and the member representing them, read from A's
+ * rows. 0015 makes those expenses/splits/members readable, and 0021 adds the
+ * settlements, so the net derived here is the same figure A sees, just from the other
+ * side (hence the inversion: we compute from the representing member's perspective).
+ *
+ * Deliberately runs the same {@link balanceWith} engine as every other balance — the
+ * figure is derived on read from one source of truth, never mirrored or stored, so the
+ * two accounts can't disagree.
+ */
+export const getSharedBalances = cache(async (): Promise<SharedBalance[]> => {
+  const user = await getUser();
+  if (!user) return [];
+
+  const supabase = createClient();
+  const { rows } = await getBalanceContext();
+
+  // Members that represent me in other people's ledgers.
+  const { data: reps } = await supabase
+    .from('members')
+    .select('id, owner_id')
+    .eq('linked_user_id', user.id)
+    .neq('owner_id', user.id);
+  if (!reps || reps.length === 0) return [];
+
+  // Each of those ledgers' self-member — the counterparty on the other side.
+  const ownerIds = [...new Set(reps.map((rep) => rep.owner_id))];
+  const { data: selves } = await supabase
+    .from('members')
+    .select('id, owner_id, name')
+    .in('owner_id', ownerIds)
+    .eq('is_self', true);
+  const selfByOwner = new Map((selves ?? []).map((s) => [s.owner_id, s]));
+
+  const balances: SharedBalance[] = [];
+  for (const rep of reps) {
+    const self = selfByOwner.get(rep.owner_id);
+    if (!self) continue;
+    // From the representing member's perspective — i.e. mine.
+    const netCents = balanceWith(rep.id, self.id, rows);
+    if (netCents === 0) continue;
+    balances.push({
+      memberId: rep.id,
+      ownerId: rep.owner_id,
+      counterpartyName: self.name,
+      netCents,
+    });
+  }
+  return balances.sort((a, b) =>
+    a.counterpartyName.localeCompare(b.counterpartyName),
+  );
+});
